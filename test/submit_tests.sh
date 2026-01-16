@@ -13,10 +13,12 @@
 # Submit with: sbatch submit_tests.sh
 # For Kraken2 only: sbatch submit_tests.sh --kraken-only
 # For fresh Kraken2 test (no resume): sbatch submit_tests.sh --kraken-fresh
+# For full pipeline only: sbatch submit_tests.sh --fastqc_only
 # For full pipeline only: sbatch submit_tests.sh --full
 
 # Set paths
-PIPELINE_DIR="/scratch_isilon/groups/compgen/data/Illumina_CryoZoo/BasicQC/nf-basicqc"
+PIPELINE_DIR="/scratch_isilon/groups/compgen/lwange/nf-basicqc"
+SLURM_CONFIG="/home/groups/compgen/lwange/isilon/lwange/singularity/basicqc/slurm.config"
 FASTQ_SCREEN_CONF="/scratch_isilon/groups/compgen/data/Illumina_CryoZoo/genomes/FastQ_Screen_Genomes/FastQ_Screen_Genomes/fastq_screen.conf"
 KRAKEN2_DB="/scratch_isilon/groups/compgen/data/Illumina_CryoZoo/genomes/kraken"
 
@@ -45,7 +47,7 @@ if [[ "$1" == "--kraken-only" ]]; then
         --kraken2_subsample 100000 \
         --project_name $PROJECT_NAME \
         --application $APPLICATION \
-        -profile singularity,slurm \
+        -profile singularity -c $SLURM_CONFIG \
         -resume
     echo "$(date) === Kraken2 test complete ==="
     echo "Check results in: $PIPELINE_DIR/test/results_kraken2"
@@ -67,7 +69,7 @@ if [[ "$1" == "--kraken-fresh" ]]; then
         --kraken2_subsample 100000 \
         --project_name $PROJECT_NAME \
         --application $APPLICATION \
-        -profile singularity,slurm
+        -profile singularity -c $SLURM_CONFIG
     echo "$(date) === Kraken2 test complete ==="
     echo "Check results in: $PIPELINE_DIR/test/results_kraken2"
     exit 0
@@ -84,64 +86,27 @@ if [[ "$1" == "--full" ]]; then
         --kraken2_subsample 100000 \
         --project_name $PROJECT_NAME \
         --application $APPLICATION \
-        -profile singularity,slurm \
+        -profile singularity -c $SLURM_CONFIG \
         -resume
     echo "$(date) === Full pipeline test complete ==="
     echo "Check results in: $PIPELINE_DIR/test/results_full"
     exit 0
 fi
 
-#------------------------------------------------------------------------------
-# TEST 1: FastQC only
-#------------------------------------------------------------------------------
-echo "$(date) === Test 1: FastQC only ==="
-nextflow run main.nf \
-    --input test/test_samplesheet.csv \
-    --outdir test/results_fastqc \
-    --skip_fastq_screen \
-    --skip_kraken2 \
-    -profile singularity,slurm \
-    -resume
 
-#------------------------------------------------------------------------------
-# TEST 2: FastQC + FastQ Screen
-#------------------------------------------------------------------------------
-echo "$(date) === Test 2: FastQC + FastQ Screen ==="
-nextflow run main.nf \
-    --input test/test_samplesheet.csv \
-    --outdir test/results_fastq_screen \
-    --fastq_screen_conf $FASTQ_SCREEN_CONF \
-    --skip_kraken2 \
-    -profile singularity,slurm \
-    -resume
-
-#------------------------------------------------------------------------------
-# TEST 3: FastQC + Kraken2
-#------------------------------------------------------------------------------
-echo "$(date) === Test 3: FastQC + Kraken2 ==="
-nextflow run main.nf \
-    --input test/test_samplesheet.csv \
-    --outdir test/results_kraken2 \
-    --skip_fastq_screen \
-    --kraken2_db $KRAKEN2_DB \
-    --kraken2_subsample 100000 \
-    -profile singularity,slurm \
-    -resume
-
-#------------------------------------------------------------------------------
-# TEST 4: Full pipeline
-#------------------------------------------------------------------------------
-echo "$(date) === Test 4: Full pipeline ==="
-nextflow run main.nf \
-    --input test/test_samplesheet.csv \
-    --outdir test/results_full \
-    --fastq_screen_conf $FASTQ_SCREEN_CONF \
-    --kraken2_db $KRAKEN2_DB \
-    --kraken2_subsample 100000 \
-    --project_name $PROJECT_NAME \
-    --application $APPLICATION \
-    -profile singularity,slurm \
-    -resume
-
-echo "$(date) === All tests complete ==="
-echo "Check results in: $PIPELINE_DIR/test/"
+# fastqc only pipeline test only
+if [[ "$1" == "--fastqc_only" ]]; then
+    echo "$(date) === Running full pipeline test ==="
+    nextflow run main.nf \
+        --input test/test_samplesheet.csv \
+        --outdir test/results_full \
+        --skip_fastq_screen \
+        --skip_kraken2 \
+        --project_name $PROJECT_NAME \
+        --application $APPLICATION \
+        -profile singularity -c $SLURM_CONFIG \
+        -resume
+    echo "$(date) === Full pipeline test complete ==="
+    echo "Check results in: $PIPELINE_DIR/test/results_full"
+    exit 0
+fi
