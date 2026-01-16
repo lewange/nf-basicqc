@@ -35,6 +35,23 @@ echo "========================================="
 # module load nextflow
 # module load singularity
 
+# fastqc only pipeline test only
+if [[ "$1" == "--fastqc_only" ]]; then
+    echo "$(date) === Running full pipeline test ==="
+    nextflow run main.nf \
+        --input test/test_samplesheet.csv \
+        --outdir test/results_fastqc \
+        --skip_fastq_screen \
+        --skip_kraken2 \
+        --project_name $PROJECT_NAME \
+        --application $APPLICATION \
+        -profile singularity -c $SLURM_CONFIG \
+        -resume
+    echo "$(date) === FASTQC test complete ==="
+    echo "Check results in: $PIPELINE_DIR/test/results_fastqc"
+    exit 0
+fi
+
 # Check for --kraken-only flag
 if [[ "$1" == "--kraken-only" ]]; then
     echo "$(date) === Running Kraken2 batch test only ==="
@@ -94,19 +111,3 @@ if [[ "$1" == "--full" ]]; then
 fi
 
 
-# fastqc only pipeline test only
-if [[ "$1" == "--fastqc_only" ]]; then
-    echo "$(date) === Running full pipeline test ==="
-    nextflow run main.nf \
-        --input test/test_samplesheet.csv \
-        --outdir test/results_full \
-        --skip_fastq_screen \
-        --skip_kraken2 \
-        --project_name $PROJECT_NAME \
-        --application $APPLICATION \
-        -profile singularity -c $SLURM_CONFIG \
-        -resume
-    echo "$(date) === Full pipeline test complete ==="
-    echo "Check results in: $PIPELINE_DIR/test/results_full"
-    exit 0
-fi
