@@ -28,7 +28,8 @@ OUTDIR="$2"
 PROJECT_NAME="${3:-basicqc}"
 
 # Set paths
-PIPELINE_DIR="/scratch_isilon/groups/compgen/data/Illumina_CryoZoo/BasicQC/nf-basicqc"
+PIPELINE_DIR="/scratch_isilon/groups/compgen/lwange/nf-basicqc"
+SLURM_CONFIG="/home/groups/compgen/lwange/isilon/lwange/singularity/basicqc/slurm.config"
 FASTQ_SCREEN_CONF="/scratch_isilon/groups/compgen/data/Illumina_CryoZoo/genomes/FastQ_Screen_Genomes/fastq_screen.conf"
 KRAKEN2_DB="/scratch_isilon/groups/compgen/data/Illumina_CryoZoo/genomes/kraken"
 
@@ -53,7 +54,8 @@ nextflow run main.nf \
     --kraken2_db $KRAKEN2_DB \
     --kraken2_subsample 5000000 \
     --multiqc_title "$PROJECT_NAME" \
-    -profile singularity,slurm \
+    -profile singularity \
+    -c $SLURM_CONFIG \
     -resume
 
 echo "$(date) Pipeline complete"

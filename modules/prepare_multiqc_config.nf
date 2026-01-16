@@ -18,13 +18,13 @@ process PREPARE_MULTIQC_CONFIG {
     path("multiqc_config.yaml"), emit: config
 
     script:
-    // Build sample rename entries
+    // Build sample rename entries (dictionary format for MultiQC)
     def rename_entries = sample_info.collect { info ->
         def display_name = info.sample_name ?: info.fli
         if (info.species) {
             display_name = "${info.sample_name ?: info.fli} (${info.species})"
         }
-        "    - ['${info.fli}', '${display_name}']"
+        "    '${info.fli}': '${display_name}'"
     }.join('\n')
 
     // Build header info

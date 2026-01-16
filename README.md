@@ -101,11 +101,18 @@ results/
 -profile singularity   # Use Singularity containers
 -profile docker        # Use Docker containers
 -profile conda         # Use Conda environments
--profile slurm         # Submit to SLURM cluster
 -profile test          # Test with reduced resources
 ```
 
-Profiles can be combined: `-profile singularity,slurm`
+### SLURM Configuration
+
+For SLURM cluster execution, provide a custom config file with `-c`:
+
+```bash
+-profile singularity -c /path/to/slurm.config
+```
+
+See `conf/slurm.config.example` for a template.
 
 ## Examples
 
@@ -131,7 +138,8 @@ nextflow run main.nf \
   --fastq_screen_conf /path/to/fastq_screen.conf \
   --kraken2_db /path/to/kraken2_db \
   --project_name "MyProject" \
-  -profile singularity,slurm
+  -profile singularity \
+  -c /path/to/slurm.config
 
 # Resume interrupted run
 nextflow run main.nf \
@@ -149,11 +157,35 @@ nextflow run main.nf \
 | Kraken2 | 8 | 64 GB | 12h |
 | MultiQC | 2 | 8 GB | 2h |
 
-## Testing
+## Running on SLURM
+
+### Production Runs
+
+Use `submit_pipeline.sh` for production runs:
 
 ```bash
-# Run test suite
-bash test/submit_tests.sh
+# Usage: sbatch submit_pipeline.sh <samplesheet.csv> <output_dir> [project_name]
+
+# Example
+sbatch submit_pipeline.sh inputs/CGLZOO_01.csv results/CGLZOO_01 CGLZOO_01
+```
+
+### Testing
+
+Use `test/submit_tests.sh` to run test pipelines:
+
+```bash
+# Full pipeline test
+sbatch test/submit_tests.sh --full
+
+# FastQC only test
+sbatch test/submit_tests.sh --fastqc_only
+
+# Kraken2 only test
+sbatch test/submit_tests.sh --kraken-only
+
+# Fresh Kraken2 test (no resume)
+sbatch test/submit_tests.sh --kraken-fresh
 ```
 
 ## License
