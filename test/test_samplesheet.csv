@@ -1,0 +1,3 @@
+sample,fastq_1,fastq_2,sample_name,species
+HFYMJDSXC_1_8bp-UDP0032,/scratch_isilon/groups/compgen/data_transfer/CGLZOO_01/20241128/FASTQ/HFYMJDSXC_1_8bp-UDP0032_1.fastq.gz,/scratch_isilon/groups/compgen/data_transfer/CGLZOO_01/20241128/FASTQ/HFYMJDSXC_1_8bp-UDP0032_2.fastq.gz,BB1523,Callithrix geoffroyi
+HFYMJDSXC_1_8bp-UDP0034,/scratch_isilon/groups/compgen/data_transfer/CGLZOO_01/20241128/FASTQ/HFYMJDSXC_1_8bp-UDP0034_1.fastq.gz,/scratch_isilon/groups/compgen/data_transfer/CGLZOO_01/20241128/FASTQ/HFYMJDSXC_1_8bp-UDP0034_2.fastq.gz,BB1525,Gorilla gorilla

@@ -1,0 +1,22 @@
+# Nextflow working directories
+work/
+.nextflow/
+.nextflow.log*
+
+# Results (regenerated)
+results/
+test/results*/
+
+# Singularity cache
+singularity/
+
+# SLURM logs
+*.out
+*.err
+
+# Mac files
+.DS_Store
+._*
+
+# Cluster-specific config (may contain sensitive info)
+conf/slurm.config

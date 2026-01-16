@@ -1,0 +1,42 @@
+/*
+========================================================================================
+    SLURM Cluster Configuration - TEMPLATE
+========================================================================================
+    Cluster-specific settings for SLURM execution.
+
+    USAGE:
+    1. Copy this file to 'slurm.config': cp conf/slurm.config.example conf/slurm.config
+    2. Modify the settings below to match your cluster
+    3. The slurm.config file is gitignored to protect sensitive information
+----------------------------------------------------------------------------------------
+*/
+
+executor {
+    name = 'slurm'
+    queueSize = 500
+    queue = 'your_partition'  // Change to your SLURM partition
+}
+
+process {
+    executor = 'slurm'
+    queue = 'your_partition'  // Change to your SLURM partition
+
+    // QOS based on job time - adjust these thresholds for your cluster
+    // Remove or modify this line if your cluster doesn't use QOS
+    clusterOptions = { task.time <= 1.h ? '--qos=vshort' : task.time <= 6.h ? '--qos=short' : task.time <= 12.h ? '--qos=normal' : task.time <= 24.h ? '--qos=long' : task.time <= 48.h ? '--qos=vlong' : task.time <= 168.h ? '--qos=marathon' : '--qos=eternal' }
+
+    // Process-specific resource overrides for this cluster
+    // Adjust memory based on your Kraken2 database size
+    withName: 'KRAKEN2_BATCH' {
+        cpus   = 16
+        memory = { 350.GB * task.attempt }  // Adjust based on your DB size (~DB size + 20%)
+        time   = { 24.h * task.attempt }
+    }
+}
+
+// Optional: Nextflow Tower integration
+// Uncomment and add your token to enable Tower monitoring
+// tower {
+//     accessToken = 'your_tower_access_token'
+//     enabled = true
+// }
