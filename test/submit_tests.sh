@@ -8,6 +8,7 @@
 #SBATCH --mem=8G
 #SBATCH --qos=normal
 #SBATCH --time=12:00:00
+#SBATCH --exclude=cnd75
 
 # BasicQC Nextflow Pipeline - Test Suite
 # Submit with: sbatch submit_tests.sh
@@ -35,8 +36,10 @@ echo "========================================="
 # module load nextflow
 # module load singularity
 
+arg1="${1:---full}"
+
 # fastqc only pipeline test only
-if [[ "$1" == "--fastqc_only" ]]; then
+if [[ "$arg1" == "--fastqc_only" ]]; then
     echo "$(date) === Running full pipeline test ==="
     nextflow run main.nf \
         --input test/test_samplesheet.csv \
@@ -53,7 +56,7 @@ if [[ "$1" == "--fastqc_only" ]]; then
 fi
 
 # Check for --kraken-only flag
-if [[ "$1" == "--kraken-only" ]]; then
+if [[ "$arg1" == "--kraken-only" ]]; then
     echo "$(date) === Running Kraken2 batch test only ==="
     nextflow run main.nf \
         --input test/test_samplesheet.csv \
@@ -72,7 +75,7 @@ if [[ "$1" == "--kraken-only" ]]; then
 fi
 
 # Fresh Kraken2 test without resume (use after config changes)
-if [[ "$1" == "--kraken-fresh" ]]; then
+if [[ "$arg1" == "--kraken-fresh" ]]; then
     echo "$(date) === Running fresh Kraken2 batch test (no resume) ==="
     # Clean previous work dirs to ensure fresh job submission
     echo "Cleaning previous work directories..."
@@ -93,7 +96,7 @@ if [[ "$1" == "--kraken-fresh" ]]; then
 fi
 
 # Full pipeline test only
-if [[ "$1" == "--full" ]]; then
+if [[ "$arg1" == "--full" ]]; then
     echo "$(date) === Running full pipeline test ==="
     nextflow run main.nf \
         --input test/test_samplesheet.csv \

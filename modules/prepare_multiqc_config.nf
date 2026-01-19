@@ -18,13 +18,22 @@ process PREPARE_MULTIQC_CONFIG {
     path("multiqc_config.yaml"), emit: config
 
     script:
-    // Build sample rename entries (dictionary format for MultiQC)
+    // Build sample rename entries using regex patterns to handle R1/R2 suffixes
+    // Each sample gets two entries: one for _1 (R1) and one for _2 (R2)
     def rename_entries = sample_info.collect { info ->
-        def display_name = info.sample_name ?: info.fli
-        if (info.species) {
-            display_name = "${info.sample_name ?: info.fli} (${info.species})"
-        }
-        "    '${info.fli}': '${display_name}'"
+        def base_name = info.sample_name ?: info.fli
+        def species_suffix = info.species ? " (${info.species})" : ""
+
+        // Create regex patterns that match the sample ID with _1 or _2 suffix
+        // The pattern escapes special regex characters in the sample ID
+        def escaped_fli = info.fli.replaceAll('([\\[\\](){}.*+?^\\$\\\\|])', '\\\\$1')
+
+        def entries = []
+        entries << "    '${escaped_fli}_1': '${base_name}_R1${species_suffix}'"
+        entries << "    '${escaped_fli}_2': '${base_name}_R2${species_suffix}'"
+        // Also add entry for files without _1/_2 suffix (like kraken2 reports)
+        entries << "    '${escaped_fli}\$': '${base_name}${species_suffix}'"
+        entries.join('\n')
     }.join('\n')
 
     // Build header info
@@ -50,18 +59,22 @@ sample_names_replace_regex: true
 sample_names_replace:
 ${rename_entries}
 
-# Clean up common suffixes
-extra_fn_clean_exts:
-    - '.subsampled'
-    - '_1'
-    - '_2'
-    - '.fastq.gz'
+# Disable default sample name cleaning (it's too aggressive)
+# and only apply our specific patterns
+fn_clean_exts:
+    - '.gz'
     - '.fastq'
-    - '.fq.gz'
     - '.fq'
     - '.kraken2.report'
     - '.kraken2.output'
     - '_fastqc'
+    - '_screen'
+    - '.txt'
+    - '.zip'
+    - '.html'
+
+# Disable default trimming patterns that strip after underscores
+fn_clean_trim: []
 
 # Table columns configuration
 table_columns_visible:
