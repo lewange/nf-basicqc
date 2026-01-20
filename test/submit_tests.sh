@@ -8,7 +8,7 @@
 #SBATCH --mem=8G
 #SBATCH --qos=normal
 #SBATCH --time=12:00:00
-#SBATCH --exclude=cnd75
+#SBATCH --exclude=cnd75,cnd73
 
 # BasicQC Nextflow Pipeline - Test Suite
 # Submit with: sbatch submit_tests.sh
