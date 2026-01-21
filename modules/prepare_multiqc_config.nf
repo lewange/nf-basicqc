@@ -84,6 +84,11 @@ table_columns_visible:
         avg_sequence_length: True
         percent_fails: False
         total_sequences: True
+    Kraken:
+        # Hide all species-specific columns from the built-in Kraken module
+        # Our custom summary provides top_species and percent_top_species instead
+        "% Top 5": False
+        "% Unclassified": False
 
 # General settings
 log_filesize_limit: 2000000000

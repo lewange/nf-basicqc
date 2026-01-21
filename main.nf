@@ -18,7 +18,8 @@ nextflow.enable.dsl = 2
 include { FASTQC                  } from './modules/fastqc'
 include { FASTQ_SCREEN            } from './modules/fastq_screen'
 include { SEQTK_SUBSAMPLE         } from './modules/seqtk_subsample'
-include { KRAKEN2_BATCH           } from './modules/kraken2_batch'
+include { KRAKEN2                 } from './modules/kraken2'
+include { SUMMARIZE_KRAKEN2       } from './modules/summarize_kraken2'
 include { MULTIQC                 } from './modules/multiqc'
 include { PREPARE_MULTIQC_CONFIG  } from './modules/prepare_multiqc_config'
 
@@ -128,6 +129,29 @@ def parse_samplesheet_metadata(samplesheet) {
         .collect()
 }
 
+// Parse samplesheet for Kraken2 - one FASTQ per sample_name only
+// Groups by sample_name and takes only the first entry to reduce runtime
+def parse_samplesheet_kraken2(samplesheet) {
+    Channel
+        .fromPath(samplesheet)
+        .splitCsv(header: true)
+        .map { row ->
+            def sample_name = row.sample_name ?: row.sample
+            def fastq_1 = file(row.fastq_1)
+            def fastq_2 = row.fastq_2 ? file(row.fastq_2) : null
+            def species = row.species ?: ''
+
+            return fastq_2 ?
+                tuple(sample_name, species, [fastq_1, fastq_2]) :
+                tuple(sample_name, species, [fastq_1])
+        }
+        .groupTuple(by: [0, 1])  // Group by sample_name and species
+        .map { sample_name, species, reads_list ->
+            // Take only the first FASTQ pair for this sample
+            tuple(sample_name, species, reads_list[0])
+        }
+}
+
 /*
 ========================================================================================
     MAIN WORKFLOW
@@ -168,8 +192,8 @@ workflow {
     }
 
     //
-    // MODULE: Kraken2 (with subsampling) - BATCH MODE
-    // Processes all samples in a single job to avoid reloading the large database
+    // MODULE: Kraken2 (with subsampling) - ONE FASTQ PER SAMPLE
+    // Only processes one FASTQ per sample_name to reduce runtime
     //
     if (!params.skip_kraken2) {
         if (!params.kraken2_db) {
@@ -177,22 +201,31 @@ workflow {
         } else {
             ch_kraken2_db = file(params.kraken2_db)
 
+            // Parse samplesheet for Kraken2 - one FASTQ per sample_name
+            ch_kraken2_reads = parse_samplesheet_kraken2(params.input)
+
+            // Prepare channel for subsampling: tuple(sample_name, reads)
+            ch_kraken2_for_subsample = ch_kraken2_reads
+                .map { sample_name, species, reads -> tuple(sample_name, reads) }
+
             // Subsample reads before Kraken2 for efficiency
-            SEQTK_SUBSAMPLE(ch_reads, params.kraken2_subsample)
+            SEQTK_SUBSAMPLE(ch_kraken2_for_subsample, params.kraken2_subsample)
 
-            // Collect all subsampled reads for batch processing
-            ch_subsampled_reads = SEQTK_SUBSAMPLE.out.reads
-                .map { sample, reads -> reads }
-                .flatten()
+            // Run Kraken2 per sample
+            KRAKEN2(SEQTK_SUBSAMPLE.out.reads, ch_kraken2_db)
+            ch_multiqc_files = ch_multiqc_files.mix(KRAKEN2.out.report.map { it[1] })
+
+            // Collect Kraken2 metadata for summarization (sample_name -> species mapping)
+            ch_kraken2_metadata = ch_kraken2_reads
+                .map { sample_name, species, reads ->
+                    [sample_name: sample_name, species: species]
+                }
                 .collect()
 
-            ch_sample_names = SEQTK_SUBSAMPLE.out.reads
-                .map { sample, reads -> sample }
-                .collect()
-
-            // Run Kraken2 in batch mode (database loaded once)
-            KRAKEN2_BATCH(ch_subsampled_reads, ch_kraken2_db, ch_sample_names)
-            ch_multiqc_files = ch_multiqc_files.mix(KRAKEN2_BATCH.out.reports.flatten())
+            // Summarize Kraken2 results for MultiQC custom columns
+            ch_kraken2_reports = KRAKEN2.out.report.map { it[1] }.collect()
+            SUMMARIZE_KRAKEN2(ch_kraken2_reports, ch_kraken2_metadata)
+            ch_multiqc_files = ch_multiqc_files.mix(SUMMARIZE_KRAKEN2.out.summary)
         }
     }
 

@@ -11,16 +11,16 @@ Nextflow pipeline for basic quality control analysis of Illumina FASTQ sequencin
 
 ## Current State
 
-**Last updated:** 2026-01-19
+**Last updated:** 2026-01-21
 
-**Git status:** On branch `main`, modified `test/submit_tests.sh`
+**Git status:** On branch `main`
 
 **Recent commits:**
+- `64fdd3c` changed test script
+- `90fb542` Optimize Kraken2 batch processing with parallel execution
+- `54b8015` Fix MultiQC sample naming and report detection
 - `4c01769` modified submit_tests.sh
 - `46cddb8` updated README
-- `9af7b1e` added slurm submission scripts and updated README
-- `f794e25` Adding README
-- `3e765ca` Initial commit: BasicQC Nextflow pipeline
 
 ## Key Files
 
@@ -61,9 +61,42 @@ Nextflow pipeline for basic quality control analysis of Illumina FASTQ sequencin
 
 ---
 
+### Session 2 - 2026-01-20
+- **Added custom Kraken2 summary columns to MultiQC** in `modules/summarize_kraken2.nf`:
+  - **Problem**: MultiQC's built-in Kraken2 module creates one column per species detected (e.g., "Callithrix_jacchus"), which only makes sense if all samples have the same top species
+  - **Solution**: New `SUMMARIZE_KRAKEN2` module that:
+    - Parses each `.kraken2.report.txt` file
+    - Finds the species (rank 'S') with highest percent of reads
+    - Outputs a MultiQC custom content file with two columns:
+      - `% Top Species` - Percent of reads assigned to top species
+      - `Top Species` - Name of the most abundant species
+  - **Files modified**:
+    - `modules/summarize_kraken2.nf` (new) - Parses reports and generates custom MultiQC content
+    - `modules/prepare_multiqc_config.nf` - Hides default Kraken module columns
+    - `main.nf` - Integrates new module into workflow
+  - Expected result: Each sample shows its own top species with percentage in a clean format
+
+---
+
+### Session 3 - 2026-01-21
+- **Confirmed** Kraken2 summary columns working correctly in MultiQC report
+- **Reverted Kraken2 from batch to per-sample processing**:
+  - **Problem**: Batch processing with parallel execution (Session 1) was slower than sequential due to 350GB database overhead
+  - **Solution**: Switch back to per-sample KRAKEN2 jobs, but only process ONE FASTQ per sample_name
+  - **Changes made**:
+    - `main.nf`:
+      - Switched from `KRAKEN2_BATCH` to per-sample `KRAKEN2` module
+      - Added `parse_samplesheet_kraken2()` function that groups by `sample_name` and takes only the first FASTQ pair
+      - Kraken2 now runs as separate jobs, one per unique sample_name
+    - `modules/summarize_kraken2.nf`:
+      - Updated metadata structure from `fli/sample_name/species` to `sample_name/species`
+  - **Result**: Fewer Kraken2 jobs (one per sample_name instead of one per FASTQ), each loading DB independently
+
+---
+
 ## Open Tasks
-- Verify MultiQC fix works after pipeline re-run
-- Verify Kraken2 parallel processing speedup
+- Reduce Kraken2 database size for faster processing (step 2 of optimization plan)
+- Test per-sample Kraken2 processing
 
 ## Notes for Next Session
 _Add notes here before ending each session_
