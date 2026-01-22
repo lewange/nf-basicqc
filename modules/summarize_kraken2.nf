@@ -5,6 +5,7 @@
     Parses Kraken2 reports and generates a summary file for MultiQC with:
     - Top species per sample
     - Percent of reads assigned to top species
+    - Percent of reads classified (= % mitochondrial when using mtDNA database)
 */
 
 process SUMMARIZE_KRAKEN2 {
@@ -49,6 +50,8 @@ process SUMMARIZE_KRAKEN2 {
 
         top_species = "Unknown"
         top_percent = 0.0
+        percent_classified = 0.0
+        percent_unclassified = 0.0
 
         with open(report_file, 'r') as f:
             for line in f:
@@ -58,12 +61,19 @@ process SUMMARIZE_KRAKEN2 {
                     rank = parts[3].strip()
                     taxon = parts[5].strip()
 
+                    # Get unclassified percentage (rank 'U')
+                    if rank == 'U':
+                        percent_unclassified = percent
+
                     # Look for species rank (S) with highest percentage
                     if rank == 'S' and percent > top_percent:
                         top_percent = percent
                         top_species = taxon
 
-        results.append((display_name, top_species, top_percent))
+        # Calculate % classified (= % mitochondrial for mtDNA database)
+        percent_classified = 100.0 - percent_unclassified
+
+        results.append((display_name, top_species, top_percent, percent_classified))
 
     # Write MultiQC custom content file
     # This format adds columns to the General Stats table
@@ -71,6 +81,14 @@ process SUMMARIZE_KRAKEN2 {
         # Header with MultiQC configuration
         f.write("# plot_type: 'generalstats'\\n")
         f.write("# pconfig:\\n")
+        f.write("#     - percent_classified:\\n")
+        f.write("#         title: '% mtDNA'\\n")
+        f.write("#         description: 'Percent of reads classified by Kraken2 (= % mitochondrial reads when using mtDNA database)'\\n")
+        f.write("#         max: 100\\n")
+        f.write("#         min: 0\\n")
+        f.write("#         suffix: '%'\\n")
+        f.write("#         format: '{:,.2f}'\\n")
+        f.write("#         scale: 'Blues'\\n")
         f.write("#     - percent_top_species:\\n")
         f.write("#         title: '% Top Species'\\n")
         f.write("#         description: 'Percent of reads assigned to top species by Kraken2'\\n")
@@ -83,10 +101,10 @@ process SUMMARIZE_KRAKEN2 {
         f.write("#         title: 'Top Species'\\n")
         f.write("#         description: 'Most abundant species detected by Kraken2'\\n")
         f.write("#         scale: False\\n")
-        f.write("Sample\\tpercent_top_species\\ttop_species\\n")
+        f.write("Sample\\tpercent_classified\\tpercent_top_species\\ttop_species\\n")
 
-        for display_name, top_species, top_percent in results:
-            f.write(f"{display_name}\\t{top_percent:.2f}\\t{top_species}\\n")
+        for display_name, top_species, top_percent, percent_classified in results:
+            f.write(f"{display_name}\\t{percent_classified:.2f}\\t{top_percent:.2f}\\t{top_species}\\n")
 
     print(f"Processed {len(results)} Kraken2 reports")
     """

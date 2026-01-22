@@ -11,16 +11,16 @@ Nextflow pipeline for basic quality control analysis of Illumina FASTQ sequencin
 
 ## Current State
 
-**Last updated:** 2026-01-21
+**Last updated:** 2026-01-22
 
 **Git status:** On branch `main`
 
 **Recent commits:**
+- `9980064` Switch Kraken2 to per-sample processing with one FASTQ per sample
 - `64fdd3c` changed test script
 - `90fb542` Optimize Kraken2 batch processing with parallel execution
 - `54b8015` Fix MultiQC sample naming and report detection
 - `4c01769` modified submit_tests.sh
-- `46cddb8` updated README
 
 ## Key Files
 
@@ -32,6 +32,8 @@ Nextflow pipeline for basic quality control analysis of Illumina FASTQ sequencin
 | `test/submit_tests.sh` | SLURM submission script for testing |
 | `conf/` | Configuration profiles |
 | `modules/` | Nextflow process modules |
+| `modules/sex_determination.nf` | Sex determination from genetic markers |
+| `scripts/compare_kraken2_dbs.sh` | Compare full vs mtDNA Kraken2 databases |
 
 ## Session History
 
@@ -92,14 +94,93 @@ Nextflow pipeline for basic quality control analysis of Illumina FASTQ sequencin
       - Updated metadata structure from `fli/sample_name/species` to `sample_name/species`
   - **Result**: Fewer Kraken2 jobs (one per sample_name instead of one per FASTQ), each loading DB independently
 
+- **Started building filtered Kraken2 database** (step 2 of optimization):
+  - **Goal**: Reduce database from 233GB to ~30-50GB for faster loading
+  - **Approach**: Build new database containing only:
+    - Tetrapods (taxid 32523) - mammals, birds, reptiles, amphibians (full species-level)
+    - Bacteria (taxid 2) - for contamination detection
+    - Fungi (taxid 4751) - for contamination detection
+  - **Script**: `/scratch_isilon/groups/compgen/data/Illumina_CryoZoo/genomes/kraken/build_filtered_db.sh`
+  - **How it works**:
+    1. Downloads taxonomy + nt library from NCBI (using `--use-ftp` to avoid rsync issues)
+    2. Extracts all descendant taxids for target groups from `nodes.dmp`
+    3. Filters `seqid2taxid.map` to only include sequences from target taxa
+    4. Builds database from filtered sequences
+  - **Status**: SLURM job submitted, nt library downloading (will take many hours)
+  - **Output database**: `k2_tetrapod_bac_fungi` in kraken directory
+
+---
+
+### Session 4 - 2026-01-22
+- **Pivoted Kraken2 database strategy** to mitochondrial-only approach:
+  - **Previous approach** (Session 3): Download full nt database and filter for tetrapods + bacteria/fungi
+    - Problem: nt download is 300+ GB, filtering is complex and slow
+  - **New approach**: Build small mtDNA-only database (~1GB) for species identification
+  - **Rationale**:
+    - mtDNA is naturally enriched in all sequencing types (WGS, RNA-seq, ATAC-seq, methylation)
+    - mtDNA has excellent species resolution (faster evolution than nuclear)
+    - Much smaller database = faster loading and searches
+    - Works for sample verification use case (detecting sample swaps)
+
+- **Created mtDNA Kraken2 database build script**:
+  - **Location**: `/Users/lucas/scratch/data/Illumina_CryoZoo/genomes/kraken/build_mtdna_db.sh`
+  - Downloads all RefSeq mitochondrial genomes
+  - Builds Kraken2 database (no filtering needed - non-tetrapod mtDNA won't match tetrapod samples)
+  - **Output database**: `k2_mtdna`
+  - **Status**: Building on cluster
+
+- **Updated SUMMARIZE_KRAKEN2 module** to report % mtDNA:
+  - Now reports three columns in MultiQC:
+    - `% mtDNA` - Percent of reads classified (= mitochondrial content)
+    - `% Top Species` - Percent assigned to top species
+    - `Top Species` - Name of most abundant species
+  - % mtDNA is useful QC metric on its own (indicates sample quality, cell lysis, etc.)
+
+- **Created database comparison script**:
+  - **Location**: `scripts/compare_kraken2_dbs.sh`
+  - Runs Kraken2 with both full database and mtDNA database on same samples
+  - Compares species assignments and reports agreement
+  - Outputs CSV and detailed text report
+
+- **Added sex determination feature**:
+  - **Goal**: Detect genetic sex from sequencing reads for QC/sample verification
+  - **Approach**: K-mer matching against sex-specific markers
+    - Mammals: Y chromosome markers (SRY, AMELY, DDX3Y, ZFY, USP9Y)
+    - Birds: W chromosome markers (CHD1W, NIPBLW, SPINW)
+  - **Files created**:
+    - `modules/sex_determination.nf` - SEX_DETERMINATION and SUMMARIZE_SEX processes
+    - `/Users/lucas/scratch/data/Illumina_CryoZoo/genomes/sex_markers/build_sex_marker_db.sh` - Database builder
+  - **Pipeline integration**:
+    - New parameters: `--sex_markers_db`, `--skip_sex_determination`
+    - Uses same subsampled reads as Kraken2 (efficient)
+    - MultiQC columns: Sex, Sex Conf., Y Hits (hidden), W Hits (hidden)
+  - **How it works**:
+    1. Builds k-mer index (k=31) from sex marker sequences
+    2. Scans subsampled reads for matching k-mers
+    3. Counts Y (male mammal) vs W (female bird) marker hits
+    4. Infers sex based on marker counts and reports confidence
+  - **Status**: Sex marker database building on cluster
+
 ---
 
 ## Open Tasks
-- Reduce Kraken2 database size for faster processing (step 2 of optimization plan)
-- Test per-sample Kraken2 processing
+- Test mtDNA Kraken2 database when build completes
+- Run comparison script to validate mtDNA vs full database results
+- Test sex determination with known samples
+- Consider adding species class inference from Kraken2 to improve sex determination
 
 ## Notes for Next Session
-_Add notes here before ending each session_
+- mtDNA database will be at: `/scratch_isilon/groups/compgen/data/Illumina_CryoZoo/genomes/kraken/k2_mtdna`
+- Sex markers database will be at: `/scratch_isilon/groups/compgen/data/Illumina_CryoZoo/genomes/sex_markers/all_sex_markers.fasta`
+- To use new databases:
+  ```bash
+  nextflow run main.nf \
+      --input samplesheet.csv \
+      --outdir results \
+      --kraken2_db /path/to/k2_mtdna \
+      --sex_markers_db /path/to/sex_markers/all_sex_markers.fasta \
+      -profile singularity
+  ```
 
 ---
 

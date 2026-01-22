@@ -20,6 +20,8 @@ include { FASTQ_SCREEN            } from './modules/fastq_screen'
 include { SEQTK_SUBSAMPLE         } from './modules/seqtk_subsample'
 include { KRAKEN2                 } from './modules/kraken2'
 include { SUMMARIZE_KRAKEN2       } from './modules/summarize_kraken2'
+include { SEX_DETERMINATION       } from './modules/sex_determination'
+include { SUMMARIZE_SEX           } from './modules/sex_determination'
 include { MULTIQC                 } from './modules/multiqc'
 include { PREPARE_MULTIQC_CONFIG  } from './modules/prepare_multiqc_config'
 
@@ -45,9 +47,11 @@ def helpMessage() {
       --fastq_screen_conf   Path to fastq_screen configuration file
       --kraken2_db          Path to Kraken2 database
       --kraken2_subsample   Number of reads to subsample for Kraken2 (default: 5000000)
+      --sex_markers_db      Path to sex marker FASTA for sex determination
       --skip_fastqc         Skip FastQC step
       --skip_fastq_screen   Skip FastQ Screen step
       --skip_kraken2        Skip Kraken2 step
+      --skip_sex_determination  Skip sex determination step
       --project_name        Project name for MultiQC report header (e.g., 'CGLZOO_01')
       --application         Application type for MultiQC header (e.g., 'RNA-seq')
       -profile              Configuration profile (singularity, docker, conda)
@@ -226,6 +230,59 @@ workflow {
             ch_kraken2_reports = KRAKEN2.out.report.map { it[1] }.collect()
             SUMMARIZE_KRAKEN2(ch_kraken2_reports, ch_kraken2_metadata)
             ch_multiqc_files = ch_multiqc_files.mix(SUMMARIZE_KRAKEN2.out.summary)
+        }
+    }
+
+    //
+    // MODULE: Sex Determination
+    // Uses the same subsampled reads as Kraken2
+    //
+    if (!params.skip_sex_determination) {
+        if (!params.sex_markers_db) {
+            log.warn "No sex markers database provided (--sex_markers_db). Skipping sex determination."
+        } else {
+            ch_sex_markers_db = file(params.sex_markers_db)
+
+            // Parse samplesheet for sex determination - same as Kraken2
+            ch_sex_reads = parse_samplesheet_kraken2(params.input)
+
+            // Prepare channel for subsampling (if not already subsampled by Kraken2)
+            ch_sex_for_subsample = ch_sex_reads
+                .map { sample_name, species, reads -> tuple(sample_name, reads) }
+
+            // Use same subsampled reads as Kraken2 if available, otherwise subsample
+            if (!params.skip_kraken2 && params.kraken2_db) {
+                // Reuse subsampled reads from Kraken2
+                ch_sex_subsampled = SEQTK_SUBSAMPLE.out.reads
+            } else {
+                // Need to subsample separately
+                SEQTK_SUBSAMPLE(ch_sex_for_subsample, params.kraken2_subsample)
+                ch_sex_subsampled = SEQTK_SUBSAMPLE.out.reads
+            }
+
+            // Determine species class from samplesheet (mammal, bird, etc.)
+            // For now, we use 'unknown' and let the module infer from marker hits
+            ch_sex_with_class = ch_sex_subsampled
+                .map { sample_name, reads -> tuple(sample_name, reads, 'unknown') }
+
+            // Run sex determination
+            SEX_DETERMINATION(
+                ch_sex_subsampled,
+                ch_sex_markers_db,
+                'unknown'  // species class - inferred from markers
+            )
+
+            // Collect metadata for summarization
+            ch_sex_metadata = ch_sex_reads
+                .map { sample_name, species, reads ->
+                    [sample_name: sample_name, species: species]
+                }
+                .collect()
+
+            // Summarize sex determination results for MultiQC
+            ch_sex_results = SEX_DETERMINATION.out.results.map { it[1] }.collect()
+            SUMMARIZE_SEX(ch_sex_results, ch_sex_metadata)
+            ch_multiqc_files = ch_multiqc_files.mix(SUMMARIZE_SEX.out.summary)
         }
     }
 
