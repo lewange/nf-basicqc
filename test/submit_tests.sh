@@ -14,14 +14,16 @@
 # Submit with: sbatch submit_tests.sh
 # For Kraken2 only: sbatch submit_tests.sh --kraken-only
 # For fresh Kraken2 test (no resume): sbatch submit_tests.sh --kraken-fresh
-# For full pipeline only: sbatch submit_tests.sh --fastqc_only
-# For full pipeline only: sbatch submit_tests.sh --full
+# For FastQC only: sbatch submit_tests.sh --fastqc_only
+# For full pipeline: sbatch submit_tests.sh --full
+# For sex determination test: sbatch submit_tests.sh --sex
 
 # Set paths
 PIPELINE_DIR="/scratch_isilon/groups/compgen/lwange/nf-basicqc"
 SLURM_CONFIG="/home/groups/compgen/lwange/isilon/lwange/singularity/basicqc/slurm.config"
 FASTQ_SCREEN_CONF="/scratch_isilon/groups/compgen/data/Illumina_CryoZoo/genomes/FastQ_Screen_Genomes/FastQ_Screen_Genomes/fastq_screen.conf"
 KRAKEN2_DB="/scratch_isilon/groups/compgen/data/Illumina_CryoZoo/genomes/kraken"
+SEX_MARKERS_DB="/scratch_isilon/groups/compgen/data/Illumina_CryoZoo/genomes/sex_markers/all_sex_markers.fasta"
 
 # Project metadata for MultiQC report
 PROJECT_NAME="CGLZOO_01"
@@ -104,12 +106,33 @@ if [[ "$arg1" == "--full" ]]; then
         --fastq_screen_conf $FASTQ_SCREEN_CONF \
         --kraken2_db $KRAKEN2_DB \
         --kraken2_subsample 100000 \
+        --sex_markers_db $SEX_MARKERS_DB \
         --project_name $PROJECT_NAME \
         --application $APPLICATION \
         -profile singularity -c $SLURM_CONFIG \
         -resume
     echo "$(date) === Full pipeline test complete ==="
     echo "Check results in: $PIPELINE_DIR/test/results_full"
+    exit 0
+fi
+
+# Sex determination test only (with Kraken2)
+if [[ "$arg1" == "--sex" ]]; then
+    echo "$(date) === Running sex determination test ==="
+    nextflow run main.nf \
+        --input test/test_samplesheet.csv \
+        --outdir test/results_sex \
+        --skip_fastqc \
+        --skip_fastq_screen \
+        --kraken2_db $KRAKEN2_DB \
+        --kraken2_subsample 100000 \
+        --sex_markers_db $SEX_MARKERS_DB \
+        --project_name $PROJECT_NAME \
+        --application $APPLICATION \
+        -profile singularity -c $SLURM_CONFIG \
+        -resume
+    echo "$(date) === Sex determination test complete ==="
+    echo "Check results in: $PIPELINE_DIR/test/results_sex"
     exit 0
 fi
 
