@@ -2,10 +2,10 @@
 ========================================================================================
     SUMMARIZE_KRAKEN2 Module
 ========================================================================================
-    Parses Kraken2 reports and generates a summary file for MultiQC with:
-    - Top species per sample
-    - Percent of reads assigned to top species
-    - Percent of reads classified (= % mitochondrial when using mtDNA database)
+    Parses Kraken2 reports and generates:
+    - General Stats table with top species/genus per sample
+    - Modified Kraken reports with unclassified removed and percentages recalculated
+      (for interactive MultiQC Kraken plot without unclassified)
 */
 
 process SUMMARIZE_KRAKEN2 {
@@ -18,6 +18,7 @@ process SUMMARIZE_KRAKEN2 {
 
     output:
     path("kraken2_top_species_mqc.txt"), emit: summary
+    path("*_classified.kraken2.report.txt"), emit: classified_reports
 
     script:
     // Build a lookup map from sample_name to display name (with species)
@@ -38,10 +39,10 @@ process SUMMARIZE_KRAKEN2 {
     # Sample name lookup from samplesheet metadata
     name_lookup = json.loads('${name_lookup_json}')
 
-    # Parse all kraken2 reports and extract top species
+    # Parse all kraken2 reports and extract data
     results = []
 
-    for report_file in glob.glob("*.kraken2.report.txt"):
+    for report_file in sorted(glob.glob("*.kraken2.report.txt")):
         # Extract sample ID from filename (remove .kraken2.report.txt)
         sample_id = report_file.replace(".kraken2.report.txt", "")
 
@@ -49,36 +50,62 @@ process SUMMARIZE_KRAKEN2 {
         display_name = name_lookup.get(sample_id, sample_id)
 
         top_species = "Unknown"
-        top_percent = 0.0
-        percent_classified = 0.0
+        top_species_percent = 0.0
+        top_genus = "Unknown"
+        top_genus_percent = 0.0
         percent_unclassified = 0.0
 
+        # First pass: get unclassified percentage and find top taxa
+        lines = []
         with open(report_file, 'r') as f:
             for line in f:
+                lines.append(line)
                 parts = line.strip().split('\\t')
                 if len(parts) >= 6:
                     percent = float(parts[0].strip())
                     rank = parts[3].strip()
                     taxon = parts[5].strip()
 
-                    # Get unclassified percentage (rank 'U')
                     if rank == 'U':
                         percent_unclassified = percent
-
-                    # Look for species rank (S) with highest percentage
-                    if rank == 'S' and percent > top_percent:
-                        top_percent = percent
+                    elif rank == 'G' and percent > top_genus_percent:
+                        top_genus_percent = percent
+                        top_genus = taxon
+                    elif rank == 'S' and percent > top_species_percent:
+                        top_species_percent = percent
                         top_species = taxon
 
-        # Calculate % classified (= % mitochondrial for mtDNA database)
+        # Calculate % classified
         percent_classified = 100.0 - percent_unclassified
 
-        results.append((display_name, top_species, top_percent, percent_classified))
+        # Calculate top genus as % of classified reads
+        top_genus_pct_of_classified = (top_genus_percent / percent_classified * 100.0) if percent_classified > 0 else 0
 
-    # Write MultiQC custom content file
-    # This format adds columns to the General Stats table
+        results.append((display_name, sample_id, top_species, top_species_percent, top_genus, top_genus_pct_of_classified, percent_classified))
+
+        # Create modified Kraken report without unclassified, with recalculated percentages
+        # This will be used by MultiQC for the interactive plot
+        output_file = f"{sample_id}_classified.kraken2.report.txt"
+        with open(output_file, 'w') as f_out:
+            for line in lines:
+                parts = line.strip().split('\\t')
+                if len(parts) >= 6:
+                    rank = parts[3].strip()
+
+                    # Skip unclassified line
+                    if rank == 'U':
+                        continue
+
+                    # Recalculate percentage relative to classified reads
+                    if percent_classified > 0:
+                        orig_percent = float(parts[0].strip())
+                        new_percent = (orig_percent / percent_classified) * 100.0
+                        parts[0] = f"  {new_percent:.2f}"
+
+                    f_out.write('\\t'.join(parts) + '\\n')
+
+    # Write MultiQC custom content file for General Stats table
     with open("kraken2_top_species_mqc.txt", 'w') as f:
-        # Header with MultiQC configuration
         f.write("# plot_type: 'generalstats'\\n")
         f.write("# pconfig:\\n")
         f.write("#     - percent_classified:\\n")
@@ -89,9 +116,13 @@ process SUMMARIZE_KRAKEN2 {
         f.write("#         suffix: '%'\\n")
         f.write("#         format: '{:,.2f}'\\n")
         f.write("#         scale: 'Blues'\\n")
-        f.write("#     - percent_top_species:\\n")
-        f.write("#         title: '% Top Species'\\n")
-        f.write("#         description: 'Percent of reads assigned to top species by Kraken2'\\n")
+        f.write("#     - top_genus:\\n")
+        f.write("#         title: 'Top Genus'\\n")
+        f.write("#         description: 'Most abundant genus detected by Kraken2'\\n")
+        f.write("#         scale: False\\n")
+        f.write("#     - percent_top_genus:\\n")
+        f.write("#         title: '% Top Genus'\\n")
+        f.write("#         description: 'Percent of classified reads assigned to top genus'\\n")
         f.write("#         max: 100\\n")
         f.write("#         min: 0\\n")
         f.write("#         suffix: '%'\\n")
@@ -101,11 +132,20 @@ process SUMMARIZE_KRAKEN2 {
         f.write("#         title: 'Top Species'\\n")
         f.write("#         description: 'Most abundant species detected by Kraken2'\\n")
         f.write("#         scale: False\\n")
-        f.write("Sample\\tpercent_classified\\tpercent_top_species\\ttop_species\\n")
+        f.write("#     - percent_top_species:\\n")
+        f.write("#         title: '% Top Species'\\n")
+        f.write("#         description: 'Percent of total reads assigned to top species'\\n")
+        f.write("#         max: 100\\n")
+        f.write("#         min: 0\\n")
+        f.write("#         suffix: '%'\\n")
+        f.write("#         format: '{:,.2f}'\\n")
+        f.write("#         scale: 'RdYlGn'\\n")
+        f.write("Sample\\tpercent_classified\\ttop_genus\\tpercent_top_genus\\ttop_species\\tpercent_top_species\\n")
 
-        for display_name, top_species, top_percent, percent_classified in results:
-            f.write(f"{display_name}\\t{percent_classified:.2f}\\t{top_percent:.2f}\\t{top_species}\\n")
+        for display_name, sample_id, top_species, top_species_percent, top_genus, top_genus_pct_classified, percent_classified in results:
+            f.write(f"{display_name}\\t{percent_classified:.2f}\\t{top_genus}\\t{top_genus_pct_classified:.1f}\\t{top_species}\\t{top_species_percent:.2f}\\n")
 
     print(f"Processed {len(results)} Kraken2 reports")
+    print(f"Created modified reports without unclassified reads")
     """
 }

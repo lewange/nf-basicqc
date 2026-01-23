@@ -217,7 +217,8 @@ workflow {
 
             // Run Kraken2 per sample
             KRAKEN2(SEQTK_SUBSAMPLE.out.reads, ch_kraken2_db)
-            ch_multiqc_files = ch_multiqc_files.mix(KRAKEN2.out.report.map { it[1] })
+            // Note: We don't pass raw Kraken reports to MultiQC to avoid the default plot
+            // with unclassified reads. Instead, we use our custom SUMMARIZE_KRAKEN2 output.
 
             // Collect Kraken2 metadata for summarization (sample_name -> species mapping)
             ch_kraken2_metadata = ch_kraken2_reads
@@ -226,10 +227,13 @@ workflow {
                 }
                 .collect()
 
-            // Summarize Kraken2 results for MultiQC custom columns
+            // Summarize Kraken2 results for MultiQC
+            // Creates: general stats columns + modified reports without unclassified
             ch_kraken2_reports = KRAKEN2.out.report.map { it[1] }.collect()
             SUMMARIZE_KRAKEN2(ch_kraken2_reports, ch_kraken2_metadata)
             ch_multiqc_files = ch_multiqc_files.mix(SUMMARIZE_KRAKEN2.out.summary)
+            // Pass modified Kraken reports (without unclassified) to MultiQC for interactive plot
+            ch_multiqc_files = ch_multiqc_files.mix(SUMMARIZE_KRAKEN2.out.classified_reports.flatten())
         }
     }
 

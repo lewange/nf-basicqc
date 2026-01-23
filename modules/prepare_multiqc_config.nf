@@ -65,6 +65,7 @@ fn_clean_exts:
     - '.gz'
     - '.fastq'
     - '.fq'
+    - '_classified.kraken2.report'
     - '.kraken2.report'
     - '.kraken2.output'
     - '_fastqc'
@@ -84,11 +85,11 @@ table_columns_visible:
         avg_sequence_length: True
         percent_fails: False
         total_sequences: True
-    Kraken:
-        # Hide all species-specific columns from the built-in Kraken module
-        # Our custom summary provides top_species and percent_top_species instead
-        "% Top 5": False
-        "% Unclassified": False
+
+# Hide the default Kraken module entirely from general stats
+# We use our custom kraken2_summary_mqc.txt instead
+skip_generalstats:
+    - kraken
 
 # General settings
 log_filesize_limit: 2000000000
