@@ -77,7 +77,18 @@ fn_clean_exts:
 # Disable default trimming patterns that strip after underscores
 fn_clean_trim: []
 
-# Table columns configuration
+# Show the General Stats table at the top of the report
+show_analysis_paths: False
+show_analysis_time: False
+
+# Module order - custom content first to ensure General Stats columns appear
+module_order:
+    - custom_content
+    - fastqc
+    - fastq_screen
+    - kraken
+
+# Table columns configuration - explicitly show our custom columns
 table_columns_visible:
     FastQC:
         percent_duplicates: True
@@ -85,6 +96,27 @@ table_columns_visible:
         avg_sequence_length: True
         percent_fails: False
         total_sequences: True
+    "Custom content: kraken2_top_species_mqc":
+        percent_classified: True
+        top_genus: True
+        percent_top_genus: True
+        top_species: True
+        percent_top_species: True
+    "Custom content: sex_determination_mqc":
+        inferred_sex: True
+        sex_confidence: True
+
+# Column ordering - put our custom columns first
+table_columns_placement:
+    "Custom content: kraken2_top_species_mqc":
+        percent_classified: 100
+        top_genus: 110
+        percent_top_genus: 120
+        top_species: 130
+        percent_top_species: 140
+    "Custom content: sex_determination_mqc":
+        inferred_sex: 150
+        sex_confidence: 160
 
 # Hide the default Kraken module entirely from general stats
 # We use our custom kraken2_summary_mqc.txt instead

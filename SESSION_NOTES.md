@@ -60,3 +60,48 @@ sbatch test/submit_tests.sh --kraken-fresh
 # or
 sbatch test/submit_tests.sh --full  # (remove -resume flag first)
 ```
+
+## Additional Changes - General Stats Table Fix
+
+### Issue
+The General Stats table at the top of the MultiQC report was not appearing, even though the data was being collected correctly (visible in `multiqc_data.json`).
+
+### Solution
+Updated `modules/prepare_multiqc_config.nf` with explicit configuration for:
+
+1. **Module ordering** - Ensures `custom_content` module runs first:
+   ```yaml
+   module_order:
+       - custom_content
+       - fastqc
+       - fastq_screen
+       - kraken
+   ```
+
+2. **Column visibility** - Explicitly enables all custom columns:
+   ```yaml
+   table_columns_visible:
+       "Custom content: kraken2_top_species_mqc":
+           percent_classified: True
+           top_genus: True
+           ...
+   ```
+
+3. **Column placement** - Orders columns logically with custom columns first:
+   ```yaml
+   table_columns_placement:
+       "Custom content: kraken2_top_species_mqc":
+           percent_classified: 100
+           ...
+   ```
+
+### Expected General Stats Columns
+After these changes, the General Stats table should show:
+- % mtDNA (percent classified)
+- Top Genus
+- % Top Genus
+- Top Species
+- % Top Species
+- Sex (inferred)
+- Sex Confidence
+- FastQC metrics (total sequences, % GC, % duplicates, avg length)
