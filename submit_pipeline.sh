@@ -8,38 +8,60 @@
 #SBATCH --mem=8G
 #SBATCH --qos=marathon
 #SBATCH --time=48:00:00
+#SBATCH --exclude=cnd75,cnd73
 
 # BasicQC Nextflow Pipeline - Production Run
 #
 # Usage:
-#   sbatch submit_pipeline.sh <samplesheet.csv> <output_dir> [project_name]
+#   sbatch submit_pipeline.sh <samplesheet.csv> <output_dir> [project_name] [application]
 #
 # Example:
-#   sbatch submit_pipeline.sh inputs/CGLZOO_01.csv results/CGLZOO_01 CGLZOO_01
+#   sbatch submit_pipeline.sh inputs/CGLZOO_01.csv results/CGLZOO_01 CGLZOO_01 "RNA-seq"
+#
+# Features:
+#   - FastQC: Read quality metrics
+#   - FastQ Screen: Contamination screening
+#   - Kraken2: mtDNA-based species identification
+#   - Sex determination: Genetic sex inference from sex-specific markers
+#   - MultiQC: Aggregated report with General Stats table
 
 # Check arguments
 if [ $# -lt 2 ]; then
-    echo "Usage: sbatch submit_pipeline.sh <samplesheet.csv> <output_dir> [project_name]"
+    echo "Usage: sbatch submit_pipeline.sh <samplesheet.csv> <output_dir> [project_name] [application]"
+    echo ""
+    echo "Arguments:"
+    echo "  samplesheet.csv  - CSV file with columns: sample,fastq_1,fastq_2,sample_name,species"
+    echo "  output_dir       - Directory for pipeline outputs"
+    echo "  project_name     - (optional) Project name for MultiQC report title"
+    echo "  application      - (optional) Application type (e.g., 'RNA-seq', 'WGS')"
     exit 1
 fi
 
 SAMPLESHEET="$1"
 OUTDIR="$2"
-PROJECT_NAME="${3:-basicqc}"
+PROJECT_NAME="${3:-BasicQC}"
+APPLICATION="${4:-Quality Control}"
 
 # Set paths
 PIPELINE_DIR="/scratch_isilon/groups/compgen/lwange/nf-basicqc"
 SLURM_CONFIG="/home/groups/compgen/lwange/isilon/lwange/singularity/basicqc/slurm.config"
 FASTQ_SCREEN_CONF="/scratch_isilon/groups/compgen/data/Illumina_CryoZoo/genomes/FastQ_Screen_Genomes/fastq_screen.conf"
-KRAKEN2_DB="/scratch_isilon/groups/compgen/data/Illumina_CryoZoo/genomes/kraken"
+KRAKEN2_DB="/scratch_isilon/groups/compgen/data/Illumina_CryoZoo/genomes/kraken/k2_mtdna"
+SEX_MARKERS_DB="/scratch_isilon/groups/compgen/data/Illumina_CryoZoo/genomes/sex_markers/all_sex_markers.fasta"
 
 cd $PIPELINE_DIR
 
 echo "$(date) Starting BasicQC pipeline"
 echo "=================================="
-echo "Samplesheet: $SAMPLESHEET"
-echo "Output dir:  $OUTDIR"
-echo "Project:     $PROJECT_NAME"
+echo "Samplesheet:  $SAMPLESHEET"
+echo "Output dir:   $OUTDIR"
+echo "Project:      $PROJECT_NAME"
+echo "Application:  $APPLICATION"
+echo ""
+echo "Databases:"
+echo "  FastQ Screen: $FASTQ_SCREEN_CONF"
+echo "  Kraken2 mtDNA: $KRAKEN2_DB"
+echo "  Sex markers:   $SEX_MARKERS_DB"
 echo ""
 
 # Load modules if needed (uncomment/modify as needed)
@@ -48,15 +70,23 @@ echo ""
 
 # Run the pipeline
 nextflow run main.nf \
-    --input $SAMPLESHEET \
-    --outdir $OUTDIR \
-    --fastq_screen_conf $FASTQ_SCREEN_CONF \
-    --kraken2_db $KRAKEN2_DB \
-    --kraken2_subsample 5000000 \
-    --multiqc_title "$PROJECT_NAME" \
+    --input "$SAMPLESHEET" \
+    --outdir "$OUTDIR" \
+    --fastq_screen_conf "$FASTQ_SCREEN_CONF" \
+    --kraken2_db "$KRAKEN2_DB" \
+    --kraken2_subsample 100000 \
+    --sex_markers_db "$SEX_MARKERS_DB" \
+    --project_name "$PROJECT_NAME" \
+    --application "$APPLICATION" \
     -profile singularity \
     -c $SLURM_CONFIG \
     -resume
 
+echo ""
 echo "$(date) Pipeline complete"
 echo "Results in: $OUTDIR"
+echo ""
+echo "Key outputs:"
+echo "  - MultiQC report: $OUTDIR/multiqc/${PROJECT_NAME}_multiqc_report.html"
+echo "  - FastQC results: $OUTDIR/fastqc/"
+echo "  - Kraken2 reports: $OUTDIR/kraken2/"
