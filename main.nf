@@ -24,6 +24,7 @@ include { SEX_DETERMINATION       } from './modules/sex_determination'
 include { SUMMARIZE_SEX           } from './modules/sex_determination'
 include { MULTIQC                 } from './modules/multiqc'
 include { PREPARE_MULTIQC_CONFIG  } from './modules/prepare_multiqc_config'
+include { SUMMARIZE_RESULTS       } from './modules/summarize_results'
 
 /*
 ========================================================================================
@@ -312,6 +313,34 @@ workflow {
         ch_multiqc_input,
         PREPARE_MULTIQC_CONFIG.out.config
     )
+
+    //
+    // MODULE: Generate consolidated summary table
+    //
+    // Collect FastQC zip files
+    ch_fastqc_for_summary = params.skip_fastqc
+        ? Channel.of(file("NO_FILE"))
+        : FASTQC.out.zip.map { it[1] }.collect()
+
+    // Get Kraken2 summary (or placeholder)
+    ch_kraken2_for_summary = (params.skip_kraken2 || !params.kraken2_db)
+        ? Channel.of(file("NO_FILE"))
+        : SUMMARIZE_KRAKEN2.out.summary
+
+    // Get sex determination summary (or placeholder)
+    ch_sex_for_summary = (params.skip_sex_determination || !params.sex_markers_db)
+        ? Channel.of(file("NO_FILE"))
+        : SUMMARIZE_SEX.out.summary
+
+    // Parse sample info for summary
+    ch_summary_sample_info = ch_sample_metadata.collect()
+
+    SUMMARIZE_RESULTS(
+        ch_fastqc_for_summary,
+        ch_kraken2_for_summary,
+        ch_sex_for_summary,
+        ch_summary_sample_info
+    )
 }
 
 /*
@@ -325,5 +354,9 @@ workflow.onComplete {
     log.info "Pipeline completed at: ${workflow.complete}"
     log.info "Execution status: ${workflow.success ? 'OK' : 'failed'}"
     log.info "Results saved to: ${params.outdir}"
+    log.info ""
+    log.info "Key outputs:"
+    log.info "  - Summary table: ${params.outdir}/summary/qc_summary.tsv"
+    log.info "  - MultiQC report: ${params.outdir}/multiqc/"
     log.info ""
 }

@@ -74,7 +74,7 @@ nextflow run main.nf \
     --outdir "$OUTDIR" \
     --fastq_screen_conf "$FASTQ_SCREEN_CONF" \
     --kraken2_db "$KRAKEN2_DB" \
-    --kraken2_subsample 100000 \
+    --kraken2_subsample 1000000 \
     --sex_markers_db "$SEX_MARKERS_DB" \
     --project_name "$PROJECT_NAME" \
     --application "$APPLICATION" \
@@ -87,6 +87,7 @@ echo "$(date) Pipeline complete"
 echo "Results in: $OUTDIR"
 echo ""
 echo "Key outputs:"
+echo "  - Summary table:  $OUTDIR/summary/qc_summary.tsv"
 echo "  - MultiQC report: $OUTDIR/multiqc/${PROJECT_NAME}_multiqc_report.html"
 echo "  - FastQC results: $OUTDIR/fastqc/"
 echo "  - Kraken2 reports: $OUTDIR/kraken2/"
