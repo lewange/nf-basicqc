@@ -23,7 +23,7 @@ process SUMMARIZE_RESULTS {
     path("qc_summary.tsv"), emit: summary
 
     script:
-    def has_sex = sex_summary.name != 'NO_FILE'
+    def has_sex = sex_summary.name != 'NO_FILE' ? 'True' : 'False'
     def sample_info_json = groovy.json.JsonOutput.toJson(sample_info)
     """
     #!/usr/bin/env python3
@@ -119,7 +119,7 @@ process SUMMARIZE_RESULTS {
                     data[sample_name]['percent_top_species'] = parts[5]
 
     # Parse sex determination summary if available
-    has_sex = ${has_sex.toString().toLowerCase()}
+    has_sex = ${has_sex}
     if has_sex and os.path.exists("${sex_summary}"):
         with open("${sex_summary}", 'r') as f:
             header = None
