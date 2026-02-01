@@ -37,7 +37,10 @@ process SUMMARIZE_RESULTS {
     sample_info = json.loads('${sample_info_json}')
     sample_species = {s['sample_name']: s.get('species', '') for s in sample_info}
 
-    # Data storage
+    # Map from FLI (flowcell ID) to sample_name
+    fli_to_sample = {s.get('fli', s['sample_name']): s['sample_name'] for s in sample_info}
+
+    # Data storage - keyed by sample_name
     data = defaultdict(dict)
 
     # Parse FastQC data from zip files
@@ -51,15 +54,18 @@ process SUMMARIZE_RESULTS {
                             content = f.read().decode('utf-8')
 
                             # Extract sample name from zip filename
-                            # Format: SAMPLE_1_fastqc.zip or SAMPLE_2_fastqc.zip
+                            # Format: FLI_1_fastqc.zip or FLI_2_fastqc.zip
                             sample_base = zip_file.replace('_fastqc.zip', '')
-                            # Remove _1 or _2 suffix to get sample name
+                            # Remove _1 or _2 suffix to get FLI
                             if sample_base.endswith('_1') or sample_base.endswith('_2'):
                                 read_num = sample_base[-1]
-                                sample_name = sample_base[:-2]
+                                fli = sample_base[:-2]
                             else:
-                                sample_name = sample_base
+                                fli = sample_base
                                 read_num = '1'
+
+                            # Map FLI to sample_name
+                            sample_name = fli_to_sample.get(fli, fli)
 
                             # Parse basic stats
                             in_basic_stats = False

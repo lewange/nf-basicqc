@@ -217,10 +217,11 @@ process SEX_DETERMINATION {
     print(f"\\nResult: {inferred_sex} ({confidence} confidence)")
     print(f"Evidence: {evidence}")
 
-    cat <<-END_VERSIONS > versions.yml
-    "${task.process}":
-        python: \$(python3 --version | sed 's/Python //')
-    END_VERSIONS
+    # Write versions
+    import sys
+    with open("versions.yml", "w") as vf:
+        vf.write('"${task.process}":\\n')
+        vf.write(f"    python: {sys.version.split()[0]}\\n")
     """
 }
 
@@ -290,32 +291,29 @@ process SUMMARIZE_SEX {
             'w_hits': w_hits
         })
 
-    # Write MultiQC custom content file
+    # Write MultiQC custom content file as a table section
     with open("sex_determination_mqc.txt", 'w') as f:
-        f.write("# plot_type: 'generalstats'\\n")
+        f.write("# plot_type: 'table'\\n")
+        f.write("# section_name: 'Sex Determination'\\n")
+        f.write("# description: 'Genetic sex inferred from sex-specific markers'\\n")
         f.write("# pconfig:\\n")
-        f.write("#     - inferred_sex:\\n")
-        f.write("#         title: 'Sex'\\n")
-        f.write("#         description: 'Inferred genetic sex from sex-specific markers'\\n")
-        f.write("#         scale: False\\n")
-        f.write("#     - sex_confidence:\\n")
-        f.write("#         title: 'Sex Conf.'\\n")
-        f.write("#         description: 'Confidence of sex determination (high/medium/low)'\\n")
-        f.write("#         scale: False\\n")
-        f.write("#     - y_marker_hits:\\n")
-        f.write("#         title: 'Y Hits'\\n")
-        f.write("#         description: 'Number of reads matching Y-chromosome markers (mammals)'\\n")
-        f.write("#         min: 0\\n")
+        f.write("#     id: 'sex_determination_table'\\n")
+        f.write("#     namespace: 'Sex'\\n")
+        f.write("# headers:\\n")
+        f.write("#     inferred_sex:\\n")
+        f.write("#         title: 'Inferred Sex'\\n")
+        f.write("#         description: 'Genetic sex based on marker analysis'\\n")
+        f.write("#     sex_confidence:\\n")
+        f.write("#         title: 'Confidence'\\n")
+        f.write("#         description: 'Confidence level (high/medium/low)'\\n")
+        f.write("#     y_marker_hits:\\n")
+        f.write("#         title: 'Y Marker Hits'\\n")
+        f.write("#         description: 'Reads matching Y-chromosome markers (mammals)'\\n")
         f.write("#         format: '{:,.0f}'\\n")
-        f.write("#         scale: 'Blues'\\n")
-        f.write("#         hidden: True\\n")
-        f.write("#     - w_marker_hits:\\n")
-        f.write("#         title: 'W Hits'\\n")
-        f.write("#         description: 'Number of reads matching W-chromosome markers (birds)'\\n")
-        f.write("#         min: 0\\n")
+        f.write("#     w_marker_hits:\\n")
+        f.write("#         title: 'W Marker Hits'\\n")
+        f.write("#         description: 'Reads matching W-chromosome markers (birds)'\\n")
         f.write("#         format: '{:,.0f}'\\n")
-        f.write("#         scale: 'Purples'\\n")
-        f.write("#         hidden: True\\n")
         f.write("Sample\\tinferred_sex\\tsex_confidence\\ty_marker_hits\\tw_marker_hits\\n")
 
         for r in results:
