@@ -1,107 +1,104 @@
-# Session Notes - 2026-01-23
+# Session Notes - 2026-01-27
 
-## Summary
-Enhanced Kraken2 MultiQC reporting to show genus-level identification and remove unclassified reads from the interactive taxonomy plot.
+## Current Status
 
-## Changes Made
+### Working Features
+- **Pipeline runs successfully** with all modules (FastQC, FastQ Screen, Kraken2, Sex Determination, MultiQC)
+- **Summary table output** (`results/summary/qc_summary.tsv`) - consolidated TSV with all QC metrics
+- **Kraken2 plot without unclassified** - modified reports exclude unclassified reads, percentages recalculated
+- **MultiQC version updated to 1.33**
 
-### 1. Enhanced General Stats Table (`modules/summarize_kraken2.nf`)
-Added new columns to the MultiQC General Stats table:
-- **% mtDNA** - Percent of reads classified (= mitochondrial reads)
-- **Top Genus** - Most abundant genus detected
-- **% Top Genus** - Percent of classified reads assigned to top genus
-- **Top Species** - Most abundant species detected
-- **% Top Species** - Percent of total reads assigned to top species
+### Known Issues to Fix
 
-### 2. Interactive Kraken Plot Without Unclassified
-The standard MultiQC Kraken module always shows "Unclassified" reads which dominate the plot (~99%) and hide useful taxonomic information. Since MultiQC has no config option to hide unclassified, we implemented a workaround:
+1. **General Stats table not showing in MultiQC report**
+   - Data IS collected (visible in `multiqc_data.json`)
+   - Log shows "Found 2 General Statistics columns" but we have 5 defined
+   - Tried: module_order, table_columns_visible, table_columns_placement configs
+   - May be an issue with custom content YAML format or MultiQC parsing
+   - File: `modules/summarize_kraken2.nf` generates `kraken2_top_species_mqc.txt`
 
-- **SUMMARIZE_KRAKEN2** now generates modified Kraken reports (`*_classified.kraken2.report.txt`) where:
-  - The unclassified line is removed
-  - All percentages are recalculated relative to classified reads (sum to 100%)
+2. **Kraken plot only shows 5 species**
+   - Need to configure `top_n` in MultiQC config
+   - File: `modules/prepare_multiqc_config.nf`
 
-- These modified reports are passed to MultiQC instead of the raw reports
-- Result: Interactive Kraken plot with taxonomy level switching (Species, Genus, Family, etc.) showing only classified read distribution
+3. **Sex determination not showing in MultiQC**
+   - Check if `sex_determination_mqc.txt` is being passed to MultiQC
+   - File: `modules/sex_determination.nf` (SUMMARIZE_SEX process)
 
-### 3. Pipeline Changes (`main.nf`)
-- Removed passing raw Kraken reports to MultiQC (line ~220)
-- Added passing of modified classified reports from SUMMARIZE_KRAKEN2
-- Updated comments to explain the approach
+## Key Files
 
-### 4. MultiQC Config (`modules/prepare_multiqc_config.nf`)
-- Added `_classified.kraken2.report` to filename cleaning patterns
-- Removed invalid `hide_unclassified` config option (doesn't exist in MultiQC)
+### Pipeline Configuration
+- `nextflow.config` - Container versions, resource settings
+- `submit_pipeline.sh` - Production run script
+- `test/submit_tests.sh` - Test scripts
 
-## Kraken2 mtDNA Database Analysis
+### MultiQC Integration
+- `modules/prepare_multiqc_config.nf` - Generates MultiQC config YAML
+- `modules/summarize_kraken2.nf` - Kraken2 summary + modified reports
+- `modules/sex_determination.nf` - Sex determination + SUMMARIZE_SEX
+- `modules/summarize_results.nf` - Consolidated QC summary table
 
-Checked Callithrix species in the mtDNA database:
+### Custom Content Files Generated
+- `kraken2_top_species_mqc.txt` - General stats columns (plot_type: 'generalstats')
+- `*_classified.kraken2.report.txt` - Modified Kraken reports without unclassified
+- `sex_determination_mqc.txt` - Sex determination results
 
-| Species | Taxon ID | Species-specific k-mers |
-|---------|----------|------------------------|
-| Callithrix aurita | 57375 | 2,240 |
-| Callithrix geoffroyi | 52231 | 853 |
-| Callithrix kuhlii | 867363 | 572 |
-| Callithrix jacchus | 9483 | 476 |
-| Callithrix penicillata | 57378 | 350 |
+## Databases
+- Kraken2 mtDNA: `/scratch_isilon/groups/compgen/data/Illumina_CryoZoo/genomes/kraken/k2_mtdna`
+- Sex markers: `/scratch_isilon/groups/compgen/data/Illumina_CryoZoo/genomes/sex_markers/all_sex_markers.fasta`
 
-Note: ~39% of Callithrix k-mers (2,834 out of 7,325) are shared at genus level, meaning reads hitting only these will classify to genus, not species. This is expected for closely related species.
+### Callithrix species in mtDNA database
+| Species | Taxon ID | K-mers |
+|---------|----------|--------|
+| C. aurita | 57375 | 2,240 |
+| C. geoffroyi | 52231 | 853 |
+| C. kuhlii | 867363 | 572 |
+| C. jacchus | 9483 | 476 |
+| C. penicillata | 57378 | 350 |
 
-Database parameters: k=35, l=31 (minimizer length)
+~39% of Callithrix k-mers are shared at genus level.
 
-## Files Modified
-- `modules/summarize_kraken2.nf` - Major rewrite for new outputs
-- `modules/prepare_multiqc_config.nf` - Filename cleaning patterns
-- `main.nf` - Pipeline flow for Kraken2 outputs
+## Next Steps
 
-## Testing
-Run without `-resume` to regenerate cached outputs:
-```bash
-sbatch test/submit_tests.sh --kraken-fresh
-# or
-sbatch test/submit_tests.sh --full  # (remove -resume flag first)
+1. **Fix Kraken top_n** - Add to prepare_multiqc_config.nf:
+   ```yaml
+   kraken:
+       top_n: 10
+   ```
+
+2. **Debug sex determination in MultiQC**
+   - Check if SUMMARIZE_SEX.out.summary is being added to ch_multiqc_files
+   - Verify sex_determination_mqc.txt format matches MultiQC expectations
+
+3. **Fix General Stats table**
+   - Try simplifying the pconfig format in kraken2_top_species_mqc.txt
+   - Or create a separate custom table section instead of generalstats
+
+## Recent Commits
+```
+26876d0 Update MultiQC to version 1.33
+2128c76 Fix Python boolean syntax in summarize_results.nf
+5f3130b Add consolidated QC summary table output
+95c52ed Update MultiQC container to version 1.27
+815e0ee Update submit_pipeline.sh for production runs
+2af1214 Fix General Stats table visibility in MultiQC report
+7743828 Enhance Kraken2 MultiQC reporting with genus stats and unclassified-free plot
 ```
 
-## Additional Changes - General Stats Table Fix
+## Commands
 
-### Issue
-The General Stats table at the top of the MultiQC report was not appearing, even though the data was being collected correctly (visible in `multiqc_data.json`).
+### Run tests
+```bash
+sbatch test/submit_tests.sh --full        # Full pipeline test
+sbatch test/submit_tests.sh --kraken-fresh # Kraken2 only, no resume
+```
 
-### Solution
-Updated `modules/prepare_multiqc_config.nf` with explicit configuration for:
+### Production run
+```bash
+sbatch submit_pipeline.sh <samplesheet.csv> <output_dir> [project_name] [application]
+```
 
-1. **Module ordering** - Ensures `custom_content` module runs first:
-   ```yaml
-   module_order:
-       - custom_content
-       - fastqc
-       - fastq_screen
-       - kraken
-   ```
-
-2. **Column visibility** - Explicitly enables all custom columns:
-   ```yaml
-   table_columns_visible:
-       "Custom content: kraken2_top_species_mqc":
-           percent_classified: True
-           top_genus: True
-           ...
-   ```
-
-3. **Column placement** - Orders columns logically with custom columns first:
-   ```yaml
-   table_columns_placement:
-       "Custom content: kraken2_top_species_mqc":
-           percent_classified: 100
-           ...
-   ```
-
-### Expected General Stats Columns
-After these changes, the General Stats table should show:
-- % mtDNA (percent classified)
-- Top Genus
-- % Top Genus
-- Top Species
-- % Top Species
-- Sex (inferred)
-- Sex Confidence
-- FastQC metrics (total sequences, % GC, % duplicates, avg length)
+### Check MultiQC log
+```bash
+cat results/multiqc/*_multiqc_report_data/multiqc.log
+```
