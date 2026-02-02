@@ -8,7 +8,7 @@
 process FASTQ_SCREEN {
     tag "$sample"
     label 'process_high'
-    publishDir "${params.outdir}/fastq_screen", mode: 'copy'
+    publishDir "${params.outdir}/fastq_screen", mode: 'copy', saveAs: { fn -> fn == 'versions.yml' ? null : fn }
 
     input:
     tuple val(sample), path(reads)

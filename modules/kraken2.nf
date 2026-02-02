@@ -9,7 +9,7 @@
 process KRAKEN2 {
     tag "$sample"
     label 'process_high'
-    publishDir "${params.outdir}/kraken2", mode: 'copy'
+    publishDir "${params.outdir}/kraken2", mode: 'copy', saveAs: { fn -> fn == 'versions.yml' ? null : fn }
 
     input:
     tuple val(sample), path(reads)

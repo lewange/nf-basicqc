@@ -8,7 +8,7 @@
 process FASTQC {
     tag "$sample"
     label 'process_medium'
-    publishDir "${params.outdir}/fastqc", mode: 'copy'
+    publishDir "${params.outdir}/fastqc", mode: 'copy', saveAs: { fn -> fn == 'versions.yml' ? null : fn }
 
     input:
     tuple val(sample), path(reads)

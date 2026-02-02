@@ -12,7 +12,7 @@
 process SEX_DETERMINATION {
     tag "$sample"
     label 'process_low'
-    publishDir "${params.outdir}/sex_determination", mode: 'copy'
+    publishDir "${params.outdir}/sex_determination", mode: 'copy', saveAs: { fn -> fn == 'versions.yml' ? null : fn }
 
     input:
     tuple val(sample), path(reads)
