@@ -27,10 +27,10 @@ process {
 
     // Process-specific resource overrides for this cluster
     // Adjust memory based on your Kraken2 database size
-    withName: 'KRAKEN2_BATCH' {
-        cpus   = 16
-        memory = { 350.GB * task.attempt }  // Adjust based on your DB size (~DB size + 20%)
-        time   = { 24.h * task.attempt }
+    withName: 'KRAKEN2' {
+        cpus   = 8
+        memory = { 64.GB * task.attempt }  // Adjust based on your DB size (~DB size + 20%)
+        time   = { 4.h * task.attempt }
     }
 }
 

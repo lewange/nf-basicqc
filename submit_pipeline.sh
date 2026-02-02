@@ -37,24 +37,28 @@ if [ $# -lt 2 ]; then
     exit 1
 fi
 
-SAMPLESHEET="$1"
-OUTDIR="$2"
+SAMPLESHEET="$(realpath $1)"
+OUTDIR="$(realpath -m $2)"
 PROJECT_NAME="${3:-BasicQC}"
 APPLICATION="${4:-Quality Control}"
 
 # Set paths
 PIPELINE_DIR="/scratch_isilon/groups/compgen/lwange/nf-basicqc"
 SLURM_CONFIG="/home/groups/compgen/lwange/isilon/lwange/singularity/basicqc/slurm.config"
-FASTQ_SCREEN_CONF="/scratch_isilon/groups/compgen/data/Illumina_CryoZoo/genomes/FastQ_Screen_Genomes/fastq_screen.conf"
+FASTQ_SCREEN_CONF="/scratch_isilon/groups/compgen/data/Illumina_CryoZoo/genomes/FastQ_Screen_Genomes/FastQ_Screen_Genomes/fastq_screen.conf"
 KRAKEN2_DB="/scratch_isilon/groups/compgen/data/Illumina_CryoZoo/genomes/kraken/k2_mtdna"
 SEX_MARKERS_DB="/scratch_isilon/groups/compgen/data/Illumina_CryoZoo/genomes/sex_markers/all_sex_markers.fasta"
 
-cd $PIPELINE_DIR
+# Create run directory and work from there to avoid lock conflicts
+RUN_DIR="$(dirname $OUTDIR)"
+mkdir -p "$RUN_DIR"
+cd "$RUN_DIR"
 
 echo "$(date) Starting BasicQC pipeline"
 echo "=================================="
 echo "Samplesheet:  $SAMPLESHEET"
 echo "Output dir:   $OUTDIR"
+echo "Run dir:      $RUN_DIR"
 echo "Project:      $PROJECT_NAME"
 echo "Application:  $APPLICATION"
 echo ""
@@ -69,7 +73,7 @@ echo ""
 # module load singularity
 
 # Run the pipeline
-nextflow run main.nf \
+nextflow run ${PIPELINE_DIR}/main.nf \
     --input "$SAMPLESHEET" \
     --outdir "$OUTDIR" \
     --fastq_screen_conf "$FASTQ_SCREEN_CONF" \
@@ -78,6 +82,7 @@ nextflow run main.nf \
     --sex_markers_db "$SEX_MARKERS_DB" \
     --project_name "$PROJECT_NAME" \
     --application "$APPLICATION" \
+    -w "${RUN_DIR}/work" \
     -profile singularity \
     -c $SLURM_CONFIG \
     -resume
