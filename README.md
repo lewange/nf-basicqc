@@ -78,11 +78,12 @@ sample2,/path/to/sample2_R1.fastq.gz,,SampleB,Mus musculus
 |-----------|---------|-------------|
 | `--fastq_screen_conf` | - | FastQ Screen configuration file |
 | `--kraken2_db` | - | Kraken2 mtDNA database path |
-| `--kraken2_subsample` | 5000000 | Reads to subsample for Kraken2 |
+| `--subsample_reads` | 1000000 | Reads to subsample per sample for all tools |
+| `--kraken2_subsample` | - | Override subsample depth for Kraken2 + sex det only |
+| `--rrna_subsample` | - | Override subsample depth for SortMeRNA + RiboDetector only |
 | `--sex_markers_db` | - | Sex marker FASTA for sex determination |
 | `--sortmerna_db` | - | Directory of rRNA FASTA files for SortMeRNA |
 | `--sortmerna_index` | - | Pre-built SortMeRNA index dir (skips rebuild) |
-| `--rrna_subsample` | 1000000 | Reads to subsample for rRNA tools |
 | `--read_length` | 150 | Read length in bp (for RiboDetector) |
 | `--rrna_kraken2_db` | - | Kraken2 database for rRNA species ID (uses RiboDetector-extracted reads) |
 | `--project_name` | - | Project name for MultiQC header |

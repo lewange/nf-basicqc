@@ -54,11 +54,12 @@ def helpMessage() {
     Optional arguments:
       --fastq_screen_conf   Path to fastq_screen configuration file
       --kraken2_db          Path to Kraken2 database
-      --kraken2_subsample   Number of reads to subsample for Kraken2 (default: 5000000)
+      --subsample_reads     Reads to subsample per sample for all tools (default: 1000000)
+      --kraken2_subsample   Override subsample depth for Kraken2 + sex determination only
+      --rrna_subsample      Override subsample depth for SortMeRNA + RiboDetector only
       --sex_markers_db      Path to sex marker FASTA for sex determination
       --sortmerna_db        Path to directory containing rRNA FASTA database files
-      --rrna_kraken2_db     Path to SILVA SSU Kraken2 database for rRNA-based species ID
-      --rrna_subsample      Number of reads to subsample for rRNA tools (default: 1000000)
+      --rrna_kraken2_db     Path to Kraken2 database for rRNA-based species ID
       --read_length         Sequenced read length in bp for RiboDetector (default: 150)
       --skip_fastqc         Skip FastQC step
       --skip_fastq_screen   Skip FastQ Screen step
@@ -146,9 +147,9 @@ def parse_samplesheet_metadata(samplesheet) {
         .collect()
 }
 
-// Parse samplesheet for Kraken2 - one FASTQ per sample_name only
-// Groups by sample_name and takes only the first entry to reduce runtime
-def parse_samplesheet_kraken2(samplesheet) {
+// Parse samplesheet per-sample: groups by sample_name, takes the first FLI's reads.
+// Used for all tools that run once per sample (Kraken2, sex det, SortMeRNA, RiboDetector).
+def parse_samplesheet_per_sample(samplesheet) {
     Channel
         .fromPath(samplesheet)
         .splitCsv(header: true)
@@ -209,154 +210,115 @@ workflow {
     }
 
     //
-    // MODULE: Kraken2 (with subsampling) - ONE FASTQ PER SAMPLE
-    // Only processes one FASTQ per sample_name to reduce runtime
+    // Per-sample subsampling — shared by all downstream tools
+    // (Kraken2, sex determination, SortMeRNA, RiboDetector)
+    //
+    // All tools run once per sample_name (first FLI when multiple exist).
+    // FastQC and FastQ Screen run per-FLI above; everything else uses this subsample.
+    //
+    // Default: one subsample at subsample_reads (1M) shared by all tools.
+    // Override: set --kraken2_subsample and --rrna_subsample to different values
+    //           to get separate subsampled sets for each group.
+    //
+    def run_sortmerna    = !params.skip_sortmerna && params.sortmerna_db
+    def run_ribodetector = !params.skip_ribodetector
+    def run_rrna_kraken2 = !params.skip_rrna_kraken2 && params.rrna_kraken2_db && run_ribodetector
+
+    def k2_n   = (params.kraken2_subsample != null) ? params.kraken2_subsample : params.subsample_reads
+    def rrna_n = (params.rrna_subsample    != null) ? params.rrna_subsample    : params.subsample_reads
+
+    def needs_subsample = (!params.skip_kraken2 && params.kraken2_db) ||
+                          (!params.skip_sex_determination && params.sex_markers_db) ||
+                          run_sortmerna || run_ribodetector
+
+    if (needs_subsample) {
+        // One FASTQ per sample_name (first FLI): same approach for all tools
+        ch_per_sample_reads = parse_samplesheet_per_sample(params.input)
+            .map { sample_name, species, reads -> tuple(sample_name, reads) }
+
+        SEQTK_SUBSAMPLE(ch_per_sample_reads, k2_n)
+        ch_subsampled = SEQTK_SUBSAMPLE.out.reads
+
+        // rRNA reads: same subsample unless explicitly configured otherwise
+        ch_rrna_reads = ch_subsampled
+        if (k2_n != rrna_n) {
+            SEQTK_SUBSAMPLE_RRNA(ch_per_sample_reads, rrna_n)
+            ch_rrna_reads = SEQTK_SUBSAMPLE_RRNA.out.reads
+        }
+    }
+
+    //
+    // Shared per-sample metadata (sample_name + species) — used by Kraken2 and sex det
+    //
+    ch_per_sample_meta = parse_samplesheet_per_sample(params.input)
+        .map { sample_name, species, reads -> [sample_name: sample_name, species: species] }
+        .collect()
+
+    //
+    // MODULE: Kraken2 mtDNA — one sample per sample_name, subsampled reads
     //
     if (!params.skip_kraken2) {
         if (!params.kraken2_db) {
             log.warn "No Kraken2 database provided (--kraken2_db). Skipping Kraken2."
         } else {
             ch_kraken2_db = file(params.kraken2_db)
+            KRAKEN2(ch_subsampled, ch_kraken2_db)
 
-            // Parse samplesheet for Kraken2 - one FASTQ per sample_name
-            ch_kraken2_reads = parse_samplesheet_kraken2(params.input)
-
-            // Prepare channel for subsampling: tuple(sample_name, reads)
-            ch_kraken2_for_subsample = ch_kraken2_reads
-                .map { sample_name, species, reads -> tuple(sample_name, reads) }
-
-            // Subsample reads before Kraken2 for efficiency
-            SEQTK_SUBSAMPLE(ch_kraken2_for_subsample, params.kraken2_subsample)
-
-            // Run Kraken2 per sample
-            KRAKEN2(SEQTK_SUBSAMPLE.out.reads, ch_kraken2_db)
-            // Note: We don't pass raw Kraken reports to MultiQC to avoid the default plot
-            // with unclassified reads. Instead, we use our custom SUMMARIZE_KRAKEN2 output.
-
-            // Collect Kraken2 metadata for summarization (sample_name -> species mapping)
-            ch_kraken2_metadata = ch_kraken2_reads
-                .map { sample_name, species, reads ->
-                    [sample_name: sample_name, species: species]
-                }
-                .collect()
-
-            // Summarize Kraken2 results for MultiQC
-            // Creates: general stats columns + modified reports without unclassified
             ch_kraken2_reports = KRAKEN2.out.report.map { it[1] }.collect()
-            SUMMARIZE_KRAKEN2(ch_kraken2_reports, ch_kraken2_metadata)
+            SUMMARIZE_KRAKEN2(ch_kraken2_reports, ch_per_sample_meta)
             ch_multiqc_files = ch_multiqc_files.mix(SUMMARIZE_KRAKEN2.out.summary)
-            // Pass modified Kraken reports (without unclassified) to MultiQC for interactive plot
             ch_multiqc_files = ch_multiqc_files.mix(SUMMARIZE_KRAKEN2.out.classified_reports.flatten())
         }
     }
 
     //
-    // MODULE: Sex Determination
-    // Uses the same subsampled reads as Kraken2
+    // MODULE: Sex Determination — reuses ch_subsampled (same reads as Kraken2)
     //
     if (!params.skip_sex_determination) {
         if (!params.sex_markers_db) {
             log.warn "No sex markers database provided (--sex_markers_db). Skipping sex determination."
         } else {
             ch_sex_markers_db = file(params.sex_markers_db)
+            SEX_DETERMINATION(ch_subsampled, ch_sex_markers_db, 'unknown')
 
-            // Parse samplesheet for sex determination - same as Kraken2
-            ch_sex_reads = parse_samplesheet_kraken2(params.input)
-
-            // Prepare channel for subsampling (if not already subsampled by Kraken2)
-            ch_sex_for_subsample = ch_sex_reads
-                .map { sample_name, species, reads -> tuple(sample_name, reads) }
-
-            // Use same subsampled reads as Kraken2 if available, otherwise subsample
-            if (!params.skip_kraken2 && params.kraken2_db) {
-                // Reuse subsampled reads from Kraken2
-                ch_sex_subsampled = SEQTK_SUBSAMPLE.out.reads
-            } else {
-                // Need to subsample separately
-                SEQTK_SUBSAMPLE(ch_sex_for_subsample, params.kraken2_subsample)
-                ch_sex_subsampled = SEQTK_SUBSAMPLE.out.reads
-            }
-
-            // Determine species class from samplesheet (mammal, bird, etc.)
-            // For now, we use 'unknown' and let the module infer from marker hits
-            ch_sex_with_class = ch_sex_subsampled
-                .map { sample_name, reads -> tuple(sample_name, reads, 'unknown') }
-
-            // Run sex determination
-            SEX_DETERMINATION(
-                ch_sex_subsampled,
-                ch_sex_markers_db,
-                'unknown'  // species class - inferred from markers
-            )
-
-            // Collect metadata for summarization
-            ch_sex_metadata = ch_sex_reads
-                .map { sample_name, species, reads ->
-                    [sample_name: sample_name, species: species]
-                }
-                .collect()
-
-            // Summarize sex determination results for MultiQC
             ch_sex_results = SEX_DETERMINATION.out.results.map { it[1] }.collect()
-            SUMMARIZE_SEX(ch_sex_results, ch_sex_metadata)
+            SUMMARIZE_SEX(ch_sex_results, ch_per_sample_meta)
             ch_multiqc_files = ch_multiqc_files.mix(SUMMARIZE_SEX.out.summary)
         }
     }
 
     //
-    // rRNA quantification: SortMeRNA and/or RiboDetector
-    // Subsampled reads are shared between both tools when both are enabled.
-    //
-    def run_sortmerna    = !params.skip_sortmerna && params.sortmerna_db
-    def run_ribodetector = !params.skip_ribodetector
-    def run_rrna_kraken2 = !params.skip_rrna_kraken2 && params.rrna_kraken2_db && run_ribodetector
-
-    if (run_sortmerna || run_ribodetector) {
-        // Subsample once, shared by both tools
-        SEQTK_SUBSAMPLE_RRNA(ch_reads, params.rrna_subsample)
-        ch_rrna_reads = SEQTK_SUBSAMPLE_RRNA.out.reads
-    }
-
-    //
-    // MODULE: SortMeRNA
-    // Index is built once per run by SORTMERNA_INDEX and shared across all samples
-    // (same pattern as nf-core/rnaseq). Works because within a run all processes
-    // receive symlinks to the same real FASTA paths, so SortMeRNA's path-based
-    // hash matches. Cross-run index reuse is not supported.
+    // MODULE: SortMeRNA — per-sample subsampled reads (ch_rrna_reads)
+    // Index is built once per run by SORTMERNA_INDEX and shared across all samples.
     //
     if (run_sortmerna) {
-        // --sortmerna_db can be a single FASTA file or a directory of FASTA files
         ch_sortmerna_fastas = file(params.sortmerna_db).isDirectory()
             ? Channel.fromPath("${params.sortmerna_db}/*.{fasta,fa,fna}").collect()
             : Channel.of(file(params.sortmerna_db)).collect()
 
-        // Build index once, share across all samples via .first()
         SORTMERNA_INDEX(ch_sortmerna_fastas)
         ch_sortmerna_index = SORTMERNA_INDEX.out.index.first()
 
-        // SortMeRNA is used for % rRNA metric only — reads are no longer passed to Kraken2
+        // SortMeRNA provides % rRNA metric only; reads no longer passed to Kraken2
         SORTMERNA(ch_rrna_reads, ch_sortmerna_fastas, ch_sortmerna_index, 'false')
     } else if (!params.skip_sortmerna) {
         log.warn "No SortMeRNA database provided (--sortmerna_db). Skipping SortMeRNA."
     }
 
     //
-    // MODULE: RiboDetector
-    // Provides % rRNA metric and, when run_rrna_kraken2 is enabled, saves rRNA reads
-    // for downstream Kraken2 classification (fewer mRNA false positives than SortMeRNA).
+    // MODULE: RiboDetector — per-sample subsampled reads (ch_rrna_reads)
+    // Provides % rRNA metric and, when rrna_kraken2_db is set, saves rRNA reads
+    // for downstream Kraken2 species ID (fewer mRNA false positives than SortMeRNA).
     //
     if (run_ribodetector) {
         RIBODETECTOR(ch_rrna_reads, params.read_length, run_rrna_kraken2.toString())
 
         if (run_rrna_kraken2) {
             ch_rrna_kraken2_db = file(params.rrna_kraken2_db)
-            // Rename sample ID to add _rrna suffix → output files become {fli}_rrna.kraken2.report.txt
-            // This distinguishes them from mtDNA Kraken2 reports in the SUMMARIZE_RESULTS work dir
             KRAKEN2_RRNA(
                 RIBODETECTOR.out.rrna_reads.map { sample, reads -> tuple("${sample}_rrna", reads) },
                 ch_rrna_kraken2_db
             )
-            // Summarize rRNA Kraken2 for MultiQC (custom content table, same style as mtDNA Kraken2)
             SUMMARIZE_RRNA_KRAKEN2(
                 KRAKEN2_RRNA.out.report.map { it[1] }.collect(),
                 ch_sample_metadata
@@ -367,8 +329,6 @@ workflow {
 
     //
     // MODULE: Summarize rRNA quantification for MultiQC (proper per-sample naming)
-    // Creates generalstats custom content with FLI → sample_name mapping, replacing
-    // the raw SortMeRNA logs that MultiQC would parse with per-read-file sample names.
     //
     if (run_sortmerna || run_ribodetector) {
         ch_smr_logs  = run_sortmerna    ? SORTMERNA.out.log.map    { it[1] }.collect() : Channel.of(file("NO_SORTMERNA"))

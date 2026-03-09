@@ -75,7 +75,7 @@ if [[ "$arg1" == "--kraken-only" ]]; then
         --skip_fastqc \
         --skip_fastq_screen \
         --kraken2_db $KRAKEN2_DB \
-        --kraken2_subsample 100000 \
+        --subsample_reads 100000 \
         --project_name $PROJECT_NAME \
         --application $APPLICATION \
         -name "test_${TEST_TYPE}_${RUN_TS}" \
@@ -98,7 +98,7 @@ if [[ "$arg1" == "--kraken-fresh" ]]; then
         --skip_fastqc \
         --skip_fastq_screen \
         --kraken2_db $KRAKEN2_DB \
-        --kraken2_subsample 100000 \
+        --subsample_reads 100000 \
         --project_name $PROJECT_NAME \
         --application $APPLICATION \
         -name "test_${TEST_TYPE}_${RUN_TS}" \
@@ -116,10 +116,10 @@ if [[ "$arg1" == "--full" ]]; then
         --outdir test/results_full \
         --fastq_screen_conf $FASTQ_SCREEN_CONF \
         --kraken2_db $KRAKEN2_DB \
-        --kraken2_subsample 100000 \
+        --subsample_reads 100000 \
         --sex_markers_db $SEX_MARKERS_DB \
         --sortmerna_db $SORTMERNA_DB \
-        --rrna_subsample 100000 \
+        --subsample_reads 100000 \
         --project_name $PROJECT_NAME \
         --application $APPLICATION \
         -name "test_${TEST_TYPE}_${RUN_TS}" \
@@ -141,7 +141,7 @@ if [[ "$arg1" == "--sortmerna" ]]; then
         --skip_kraken2 \
         --skip_sex_determination \
         --sortmerna_db $SORTMERNA_DB \
-        --rrna_subsample 100000 \
+        --subsample_reads 100000 \
         --project_name $PROJECT_NAME \
         --application $APPLICATION \
         -name "test_${TEST_TYPE}_${RUN_TS}" \
@@ -164,7 +164,7 @@ if [[ "$arg1" == "--rrna_kraken2" ]]; then
         --skip_kraken2 \
         --skip_sex_determination \
         --sortmerna_db $SORTMERNA_DB \
-        --rrna_subsample 1000000 \
+        --subsample_reads 1000000 \
         --rrna_kraken2_db $RRNA_DB \
         -name "test_${TEST_TYPE}_${RUN_TS}" \
         -profile singularity -c $SLURM_CONFIG \
@@ -184,7 +184,7 @@ if [[ "$arg1" == "--sex" ]]; then
         --skip_fastqc \
         --skip_fastq_screen \
         --kraken2_db $KRAKEN2_DB \
-        --kraken2_subsample 100000 \
+        --subsample_reads 100000 \
         --sex_markers_db $SEX_MARKERS_DB \
         --project_name $PROJECT_NAME \
         --application $APPLICATION \

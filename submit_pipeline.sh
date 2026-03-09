@@ -86,7 +86,7 @@ nextflow run ${PIPELINE_DIR}/main.nf \
     --outdir "$OUTDIR" \
     --fastq_screen_conf "$FASTQ_SCREEN_CONF" \
     --kraken2_db "$KRAKEN2_DB" \
-    --kraken2_subsample 1000000 \
+    --subsample_reads 1000000 \
     --sex_markers_db "$SEX_MARKERS_DB" \
     --sortmerna_db "$SORTMERNA_DB" \
     --rrna_kraken2_db "$RRNA_KRAKEN2_DB" \
