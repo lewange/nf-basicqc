@@ -17,7 +17,8 @@ process SUMMARIZE_KRAKEN2 {
     val(sample_info)  // List of maps with: sample_name, species
 
     output:
-    path("kraken2_top_species_mqc.txt"), emit: summary
+    path("kraken2_top_species_mqc.txt"),    emit: summary
+    path("kraken2_pct_mtdna_mqc.txt"),      emit: mtdna_plot
     path("*_classified.kraken2.report.txt"), emit: classified_reports
 
     script:
@@ -138,6 +139,22 @@ process SUMMARIZE_KRAKEN2 {
 
         for display_name, sample_id, top_species, top_species_percent, top_genus, top_genus_pct_classified, percent_classified in results:
             f.write(f"{display_name}\\t{percent_classified:.2f}\\t{top_genus}\\t{top_genus_pct_classified:.1f}\\t{top_species}\\t{top_species_percent:.2f}\\n")
+
+    # Write % mtDNA bargraph for MultiQC
+    with open("kraken2_pct_mtdna_mqc.txt", 'w') as f:
+        f.write("# id: 'mtdna_pct_bar'\\n")
+        f.write("# plot_type: 'bargraph'\\n")
+        f.write("# section_name: '% Mitochondrial DNA'\\n")
+        f.write("# description: 'Percentage of subsampled reads classified against the mtDNA Kraken2 database'\\n")
+        f.write("# pconfig:\\n")
+        f.write("#     id: 'mtdna_pct_bar'\\n")
+        f.write("#     title: '% Mitochondrial reads'\\n")
+        f.write("#     ylab: '% reads'\\n")
+        f.write("#     ymax: 100\\n")
+        f.write("#     tt_decimals: 2\\n")
+        f.write("Sample\\tpct_mtdna\\n")
+        for display_name, sample_id, top_species, top_species_percent, top_genus, top_genus_pct_classified, percent_classified in results:
+            f.write(f"{display_name}\\t{percent_classified:.2f}\\n")
 
     print(f"Processed {len(results)} Kraken2 reports")
     print(f"Created modified reports without unclassified reads")

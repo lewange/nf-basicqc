@@ -267,6 +267,7 @@ workflow {
             ch_kraken2_reports = KRAKEN2.out.report.map { it[1] }.collect()
             SUMMARIZE_KRAKEN2(ch_kraken2_reports, ch_per_sample_meta)
             ch_multiqc_files = ch_multiqc_files.mix(SUMMARIZE_KRAKEN2.out.summary)
+            ch_multiqc_files = ch_multiqc_files.mix(SUMMARIZE_KRAKEN2.out.mtdna_plot)
             ch_multiqc_files = ch_multiqc_files.mix(SUMMARIZE_KRAKEN2.out.classified_reports.flatten())
         }
     }
@@ -335,6 +336,8 @@ workflow {
         ch_ribo_logs = run_ribodetector ? RIBODETECTOR.out.log.map { it[1] }.collect() : Channel.of(file("NO_RIBODETECTOR"))
         SUMMARIZE_RRNA(ch_smr_logs, ch_ribo_logs, ch_sample_metadata)
         ch_multiqc_files = ch_multiqc_files.mix(SUMMARIZE_RRNA.out.summary)
+        ch_multiqc_files = ch_multiqc_files.mix(SUMMARIZE_RRNA.out.sortmerna_plot)
+        ch_multiqc_files = ch_multiqc_files.mix(SUMMARIZE_RRNA.out.ribodetector_plot)
     }
 
     //
