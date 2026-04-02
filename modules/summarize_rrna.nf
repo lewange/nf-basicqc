@@ -114,16 +114,12 @@ process SUMMARIZE_RRNA {
     # Bargraph for SortMeRNA % rRNA
     if has_sortmerna and smr_data:
         with open("rrna_pct_sortmerna_mqc.txt", 'w') as f:
-            f.write("# id: 'rrna_pct_sortmerna_bar'\\n")
             f.write("# plot_type: 'bargraph'\\n")
-            f.write("# section_name: '% rRNA'\\n")
+            f.write("# section_name: '% rRNA (SortMeRNA)'\\n")
             f.write("# description: 'Percentage of subsampled reads detected as rRNA by SortMeRNA'\\n")
             f.write("# pconfig:\\n")
-            f.write("#     id: 'rrna_pct_sortmerna_bar'\\n")
             f.write("#     title: '% rRNA (SortMeRNA)'\\n")
             f.write("#     ylab: '% rRNA'\\n")
-            f.write("#     ymax: 100\\n")
-            f.write("#     tt_decimals: 1\\n")
             f.write("Sample\\tSortMeRNA\\n")
             for sample in sorted(smr_data):
                 f.write(f"{sample}\\t{smr_data[sample]:.1f}\\n")
@@ -131,16 +127,12 @@ process SUMMARIZE_RRNA {
     # Bargraph for RiboDetector % rRNA
     if has_ribodetector and ribo_data:
         with open("rrna_pct_ribodetector_mqc.txt", 'w') as f:
-            f.write("# id: 'rrna_pct_ribodetector_bar'\\n")
             f.write("# plot_type: 'bargraph'\\n")
-            f.write("# section_name: '% rRNA'\\n")
+            f.write("# section_name: '% rRNA (RiboDetector)'\\n")
             f.write("# description: 'Percentage of subsampled reads detected as rRNA by RiboDetector'\\n")
             f.write("# pconfig:\\n")
-            f.write("#     id: 'rrna_pct_ribodetector_bar'\\n")
             f.write("#     title: '% rRNA (RiboDetector)'\\n")
             f.write("#     ylab: '% rRNA'\\n")
-            f.write("#     ymax: 100\\n")
-            f.write("#     tt_decimals: 1\\n")
             f.write("Sample\\tRiboDetector\\n")
             for sample in sorted(ribo_data):
                 f.write(f"{sample}\\t{ribo_data[sample]:.1f}\\n")

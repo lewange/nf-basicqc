@@ -46,8 +46,8 @@ process PREPARE_MULTIQC_CONFIG {
     }
     def header_section = header_items ? "report_header_info:\n${header_items.join('\n')}" : ""
 
-    // Calculate top_n for Kraken2 plot (number of samples + 5)
-    def kraken_top_n = sample_info.size() + 5
+    // Calculate top_n for Kraken2 plot (number of samples + 10)
+    def kraken_top_n = sample_info.size() + 10
 
     """
     cat <<EOF > multiqc_config.yaml
@@ -109,6 +109,11 @@ table_columns_visible:
         percent_top_genus: True
         top_species: True
         percent_top_species: True
+        reads_used: True
+        warning: True
+    "Custom content: fastq_screen_summary_mqc":
+        top_genome: True
+        pct_top_genome: True
     "Custom content: sex_determination_mqc":
         inferred_sex: True
         sex_confidence: True
@@ -118,6 +123,7 @@ table_columns_visible:
         rrna_pct_top_genus: True
         rrna_top_species: True
         rrna_pct_top_species: True
+        rrna_reads_used: True
 
 # Column ordering - put our custom columns first
 table_columns_placement:
@@ -127,6 +133,8 @@ table_columns_placement:
         percent_top_genus: 120
         top_species: 130
         percent_top_species: 140
+        reads_used: 145
+        warning: 148
     "Custom content: sex_determination_mqc":
         inferred_sex: 150
         sex_confidence: 160
@@ -136,6 +144,10 @@ table_columns_placement:
         rrna_pct_top_genus: 190
         rrna_top_species: 200
         rrna_pct_top_species: 210
+        rrna_reads_used: 215
+    "Custom content: fastq_screen_summary_mqc":
+        top_genome: 220
+        pct_top_genome: 225
 
 # Hide the default Kraken module entirely from general stats
 # We use our custom kraken2_summary_mqc.txt instead

@@ -29,6 +29,7 @@ include { SORTMERNA_INDEX                                 } from './modules/sort
 include { SORTMERNA                                       } from './modules/sortmerna'
 include { RIBODETECTOR                                    } from './modules/ribodetector'
 include { SUMMARIZE_RRNA                                  } from './modules/summarize_rrna'
+include { SUMMARIZE_FASTQ_SCREEN                          } from './modules/summarize_fastq_screen'
 include { MULTIQC                                         } from './modules/multiqc'
 include { PREPARE_MULTIQC_CONFIG                          } from './modules/prepare_multiqc_config'
 include { SUMMARIZE_RESULTS                               } from './modules/summarize_results'
@@ -206,6 +207,11 @@ workflow {
             ch_fastq_screen_conf = file(params.fastq_screen_conf)
             FASTQ_SCREEN(ch_reads, ch_fastq_screen_conf)
             ch_multiqc_files = ch_multiqc_files.mix(FASTQ_SCREEN.out.txt.map { it[1] })
+            SUMMARIZE_FASTQ_SCREEN(
+                FASTQ_SCREEN.out.txt.map { it[1] }.collect(),
+                ch_sample_metadata.collect()
+            )
+            ch_multiqc_files = ch_multiqc_files.mix(SUMMARIZE_FASTQ_SCREEN.out.summary)
         }
     }
 

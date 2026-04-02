@@ -42,6 +42,21 @@ OUTDIR="$(realpath -m $2)"
 PROJECT_NAME="${3:-BasicQC}"
 APPLICATION="${4:-Quality Control}"
 
+# Map application type to a Nextflow experiment preset profile
+# The preset sets subsample_reads and application label automatically.
+case "${APPLICATION,,}" in   # bash lowercase
+    wgs)                    PRESET_PROFILE="wgs"    ;;
+    rna-seq|rnaseq|rna_seq) PRESET_PROFILE="rnaseq" ;;
+    amplicon)               PRESET_PROFILE="amplicon" ;;
+    *)                      PRESET_PROFILE=""        ;;
+esac
+
+if [ -n "$PRESET_PROFILE" ]; then
+    NF_PROFILE="singularity,${PRESET_PROFILE}"
+else
+    NF_PROFILE="singularity"
+fi
+
 # Set paths
 PIPELINE_DIR="/scratch_isilon/groups/compgen/lwange/nf-basicqc"
 SLURM_CONFIG="/home/groups/compgen/lwange/isilon/lwange/singularity/basicqc/slurm.config"
@@ -67,6 +82,7 @@ echo "Output dir:   $OUTDIR"
 echo "Run dir:      $RUN_DIR"
 echo "Project:      $PROJECT_NAME"
 echo "Application:  $APPLICATION"
+echo "Profile:      $NF_PROFILE"
 echo ""
 echo "Databases:"
 echo "  FastQ Screen:  $FASTQ_SCREEN_CONF"
@@ -86,7 +102,6 @@ nextflow run ${PIPELINE_DIR}/main.nf \
     --outdir "$OUTDIR" \
     --fastq_screen_conf "$FASTQ_SCREEN_CONF" \
     --kraken2_db "$KRAKEN2_DB" \
-    --subsample_reads 1000000 \
     --sex_markers_db "$SEX_MARKERS_DB" \
     --sortmerna_db "$SORTMERNA_DB" \
     --rrna_kraken2_db "$RRNA_KRAKEN2_DB" \
@@ -94,7 +109,7 @@ nextflow run ${PIPELINE_DIR}/main.nf \
     --application "$APPLICATION" \
     -name "$RUN_NAME" \
     -w "${RUN_DIR}/work" \
-    -profile singularity \
+    -profile "$NF_PROFILE" \
     -c $SLURM_CONFIG \
     -resume
 

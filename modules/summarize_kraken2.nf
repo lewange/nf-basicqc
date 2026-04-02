@@ -41,6 +41,36 @@ process SUMMARIZE_KRAKEN2 {
     name_lookup = json.loads('${name_lookup_json}')
 
     # Parse all kraken2 reports and extract data
+    # Non-Metazoa kingdoms that indicate contamination / unexpected organisms
+    NON_METAZOA_CLADES = {
+        'Fungi', 'Bacteria', 'Archaea', 'Viruses',
+        'Viridiplantae', 'Rhodophyta', 'Chromista',
+    }
+
+    def get_top_species_kingdom(lines, top_species_name):
+        # Returns set of ancestor clade names, using indentation depth as rank level proxy.
+        parsed = []
+        for line in lines:
+            parts = line.split('\\t')
+            if len(parts) < 6:
+                continue
+            raw_name = parts[5]          # may have leading spaces
+            indent   = len(raw_name) - len(raw_name.lstrip())
+            clean    = raw_name.strip()
+            parsed.append({'indent': indent, 'name': clean})
+
+        # Find index of the top species
+        target_idx = next(
+            (i for i, p in enumerate(parsed) if p['name'] == top_species_name),
+            None
+        )
+        if target_idx is None:
+            return set()
+
+        # Collect all ancestors (any earlier line with strictly smaller indent)
+        target_indent = parsed[target_idx]['indent']
+        return {p['name'] for p in parsed[:target_idx] if p['indent'] < target_indent}
+
     results = []
 
     for report_file in sorted(glob.glob("*.kraken2.report.txt")):
@@ -55,6 +85,7 @@ process SUMMARIZE_KRAKEN2 {
         top_genus = "Unknown"
         top_genus_percent = 0.0
         percent_unclassified = 0.0
+        total_reads = 0
 
         # First pass: get unclassified percentage and find top taxa
         lines = []
@@ -63,12 +94,16 @@ process SUMMARIZE_KRAKEN2 {
                 lines.append(line)
                 parts = line.strip().split('\\t')
                 if len(parts) >= 6:
-                    percent = float(parts[0].strip())
-                    rank = parts[3].strip()
-                    taxon = parts[5].strip()
+                    percent   = float(parts[0].strip())
+                    clade_cnt = int(parts[1].strip())
+                    rank      = parts[3].strip()
+                    taxon     = parts[5].strip()
 
                     if rank == 'U':
                         percent_unclassified = percent
+                        total_reads += clade_cnt
+                    elif rank == 'R':            # root = all classified reads
+                        total_reads += clade_cnt
                     elif rank == 'G' and percent > top_genus_percent:
                         top_genus_percent = percent
                         top_genus = taxon
@@ -82,7 +117,20 @@ process SUMMARIZE_KRAKEN2 {
         # Calculate top genus as % of classified reads
         top_genus_pct_of_classified = (top_genus_percent / percent_classified * 100.0) if percent_classified > 0 else 0
 
-        results.append((display_name, sample_id, top_species, top_species_percent, top_genus, top_genus_pct_of_classified, percent_classified))
+        # Check whether top species falls under Metazoa
+        ancestors = get_top_species_kingdom(lines, top_species)
+        is_metazoa = 'Metazoa' in ancestors
+        non_metazoa_hit = NON_METAZOA_CLADES & ancestors  # intersection
+        if non_metazoa_hit:
+            warning = 'Non-Metazoa (' + ', '.join(sorted(non_metazoa_hit)) + ')'
+        elif top_species != 'Unknown' and not is_metazoa:
+            warning = 'Non-Metazoa'
+        else:
+            warning = ''
+
+        results.append((display_name, sample_id, top_species, top_species_percent,
+                        top_genus, top_genus_pct_of_classified, percent_classified,
+                        total_reads, warning))
 
         # Create modified Kraken report without unclassified, with recalculated percentages
         # This will be used by MultiQC for the interactive plot
@@ -135,25 +183,28 @@ process SUMMARIZE_KRAKEN2 {
         f.write("#         description: 'Percent of total reads'\\n")
         f.write("#         suffix: '%'\\n")
         f.write("#         format: '{:,.2f}'\\n")
-        f.write("Sample\\tpercent_classified\\ttop_genus\\tpercent_top_genus\\ttop_species\\tpercent_top_species\\n")
+        f.write("#     reads_used:\\n")
+        f.write("#         title: 'Reads (mtDNA)'\\n")
+        f.write("#         description: 'Number of reads submitted to the mtDNA Kraken2 database'\\n")
+        f.write("#         format: '{:,.0f}'\\n")
+        f.write("#     warning:\\n")
+        f.write("#         title: 'Warning'\\n")
+        f.write("#         description: 'Flagged when the top hit does not belong to Metazoa (possible contamination)'\\n")
+        f.write("Sample\\tpercent_classified\\ttop_genus\\tpercent_top_genus\\ttop_species\\tpercent_top_species\\treads_used\\twarning\\n")
 
-        for display_name, sample_id, top_species, top_species_percent, top_genus, top_genus_pct_classified, percent_classified in results:
-            f.write(f"{display_name}\\t{percent_classified:.2f}\\t{top_genus}\\t{top_genus_pct_classified:.1f}\\t{top_species}\\t{top_species_percent:.2f}\\n")
+        for display_name, sample_id, top_species, top_species_percent, top_genus, top_genus_pct_classified, percent_classified, total_reads, warning in results:
+            f.write(f"{display_name}\\t{percent_classified:.2f}\\t{top_genus}\\t{top_genus_pct_classified:.1f}\\t{top_species}\\t{top_species_percent:.2f}\\t{total_reads}\\t{warning}\\n")
 
     # Write % mtDNA bargraph for MultiQC
     with open("kraken2_pct_mtdna_mqc.txt", 'w') as f:
-        f.write("# id: 'mtdna_pct_bar'\\n")
         f.write("# plot_type: 'bargraph'\\n")
         f.write("# section_name: '% Mitochondrial DNA'\\n")
         f.write("# description: 'Percentage of subsampled reads classified against the mtDNA Kraken2 database'\\n")
         f.write("# pconfig:\\n")
-        f.write("#     id: 'mtdna_pct_bar'\\n")
         f.write("#     title: '% Mitochondrial reads'\\n")
         f.write("#     ylab: '% reads'\\n")
-        f.write("#     ymax: 100\\n")
-        f.write("#     tt_decimals: 2\\n")
         f.write("Sample\\tpct_mtdna\\n")
-        for display_name, sample_id, top_species, top_species_percent, top_genus, top_genus_pct_classified, percent_classified in results:
+        for display_name, sample_id, top_species, top_species_percent, top_genus, top_genus_pct_classified, percent_classified, total_reads, warning in results:
             f.write(f"{display_name}\\t{percent_classified:.2f}\\n")
 
     print(f"Processed {len(results)} Kraken2 reports")
@@ -202,6 +253,7 @@ process SUMMARIZE_RRNA_KRAKEN2 {
     # Aggregate results by display_name (in case multiple FLIs per sample)
     agg = defaultdict(lambda: {
         'classified_pct_sum': 0.0,
+        'total_reads_sum': 0,
         'top_genus': None, 'top_genus_pct': 0.0,
         'top_species': None, 'top_species_pct': 0.0,
         'count': 0
@@ -212,6 +264,7 @@ process SUMMARIZE_RRNA_KRAKEN2 {
         display = fli_to_display.get(fli, fli)
 
         unclassified_pct = 0.0
+        total_reads = 0
         genus_rows = []
         species_rows = []
         with open(report_file) as f:
@@ -219,11 +272,15 @@ process SUMMARIZE_RRNA_KRAKEN2 {
                 parts = line.strip().split('\\t')
                 if len(parts) < 6:
                     continue
-                rank = parts[3].strip()
-                pct  = float(parts[0].strip())
-                name = parts[5].strip()
+                rank      = parts[3].strip()
+                pct       = float(parts[0].strip())
+                clade_cnt = int(parts[1].strip())
+                name      = parts[5].strip()
                 if rank == 'U':
                     unclassified_pct = pct
+                    total_reads += clade_cnt
+                elif rank == 'R':
+                    total_reads += clade_cnt
                 elif rank == 'G':
                     genus_rows.append((pct, name))
                 elif rank == 'S':
@@ -232,6 +289,7 @@ process SUMMARIZE_RRNA_KRAKEN2 {
         classified_pct = 100.0 - unclassified_pct
         r = agg[display]
         r['classified_pct_sum'] += classified_pct
+        r['total_reads_sum']    += total_reads
         r['count'] += 1
 
         if species_rows:
@@ -277,14 +335,20 @@ process SUMMARIZE_RRNA_KRAKEN2 {
         f.write("#         description: 'Percent of classified rRNA reads'\\n")
         f.write("#         suffix: '%'\\n")
         f.write("#         format: '{:,.2f}'\\n")
-        f.write("Sample\\trrna_pct_classified\\trrna_top_genus\\trrna_pct_top_genus\\trrna_top_species\\trrna_pct_top_species\\n")
+        f.write("#     rrna_reads_used:\\n")
+        f.write("#         title: 'Reads (rRNA)'\\n")
+        f.write("#         description: 'Number of rRNA reads submitted to the SILVA Kraken2 database'\\n")
+        f.write("#         format: '{:,.0f}'\\n")
+        f.write("Sample\\trrna_pct_classified\\trrna_top_genus\\trrna_pct_top_genus\\trrna_top_species\\trrna_pct_top_species\\trrna_reads_used\\n")
 
         for display, r in sorted(agg.items()):
             avg_classified = r['classified_pct_sum'] / r['count'] if r['count'] > 0 else 0
+            avg_reads = r['total_reads_sum'] // max(r['count'], 1)
             f.write(
                 f"{display}\\t{avg_classified:.2f}"
                 f"\\t{r['top_genus'] or 'Unknown'}\\t{r['top_genus_pct']:.1f}"
-                f"\\t{r['top_species'] or 'Unknown'}\\t{r['top_species_pct']:.2f}\\n"
+                f"\\t{r['top_species'] or 'Unknown'}\\t{r['top_species_pct']:.2f}"
+                f"\\t{avg_reads}\\n"
             )
 
     print(f"rRNA Kraken2 summary: {len(agg)} samples")

@@ -119,6 +119,22 @@ results/
 └── pipeline_info/    # Execution reports
 ```
 
+### MultiQC report sections
+
+In addition to the standard FastQC / FastQ Screen / Kraken2 interactive plots, the report includes custom sections:
+
+| Section | Type | Description |
+|---------|------|-------------|
+| Kraken2 Species Identification | Table | Top species/genus, % mtDNA, reads used, non-Metazoa warning |
+| % Mitochondrial DNA | Bargraph | % reads classified against the mtDNA database per sample |
+| FastQ Screen Summary | Table | Top-mapped genome and its unique-mapping % per sample |
+| Sex Determination | Table | Inferred sex and confidence score |
+| % rRNA (SortMeRNA) | Bargraph | % rRNA detected by SortMeRNA per sample |
+| % rRNA (RiboDetector) | Bargraph | % rRNA detected by RiboDetector per sample |
+| rRNA Species ID (SILVA) | Table | Top species/genus from SILVA Kraken2, reads used |
+
+> **Non-Metazoa warning**: samples where the top Kraken2 hit is not in Metazoa (e.g. fungal contamination) are flagged with `Non-Metazoa (Fungi)` in the Warning column.
+
 ### Summary table columns
 
 `qc_summary.tsv` contains (columns added conditionally based on which modules ran):
@@ -135,12 +151,30 @@ results/
 
 ## Profiles
 
+### Execution environment
+
 ```bash
 -profile singularity   # Use Singularity containers
 -profile docker        # Use Docker containers
 -profile conda         # Use Conda environments
 -profile test          # Test with reduced resources
 ```
+
+### Experiment-type presets
+
+Combine with an execution profile to set sensible defaults for each assay type:
+
+```bash
+-profile singularity,wgs        # WGS: subsample_reads = 5 M (rRNA/mtDNA expected low)
+-profile singularity,rnaseq     # RNA-seq: subsample_reads = 1 M (default)
+-profile singularity,amplicon   # Amplicon: 1 M reads, skips SortMeRNA + RiboDetector
+```
+
+| Preset | `subsample_reads` | Notes |
+|--------|------------------|-------|
+| `wgs` | 5,000,000 | Higher depth needed to reliably detect low-level rRNA/mtDNA |
+| `rnaseq` | 1,000,000 | Default depth; rRNA contamination typically detectable at 1 M |
+| `amplicon` | 1,000,000 | rRNA/SortMeRNA not meaningful for amplicon data; both are skipped |
 
 ### SLURM Configuration
 
@@ -202,14 +236,19 @@ nextflow run main.nf \
 
 ### Production Runs
 
-Use `submit_pipeline.sh` for production runs:
+Use `submit_pipeline.sh` for production runs. The fourth argument (application type) automatically selects the matching experiment preset:
 
 ```bash
-# Usage: sbatch submit_pipeline.sh <samplesheet.csv> <output_dir> [project_name]
+# Usage
+sbatch submit_pipeline.sh <samplesheet.csv> <output_dir> [project_name] [application]
 
-# Example
-sbatch submit_pipeline.sh inputs/CGLZOO_01.csv results/CGLZOO_01 CGLZOO_01
+# Examples
+sbatch submit_pipeline.sh inputs/CGLZOO_18.csv results/CGLZOO_18 CGLZOO_18 "WGS"
+sbatch submit_pipeline.sh inputs/CGLZOO_01.csv results/CGLZOO_01 CGLZOO_01 "RNA-seq"
+sbatch submit_pipeline.sh inputs/CGLZOO_02.csv results/CGLZOO_02 CGLZOO_02 "Amplicon"
 ```
+
+Recognised application strings → profiles: `WGS` → `wgs`, `RNA-seq`/`RNAseq` → `rnaseq`, `Amplicon` → `amplicon`. Unrecognised values fall back to the 1 M default.
 
 ### Testing
 
